@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-AppJsonApplication<app_json>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.bkseducate.app_json.AppJsonApplication",
+            "projectName": "app_json",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}
