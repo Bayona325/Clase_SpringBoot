@@ -4615,3 +4615,2164 @@ Este taller permite entender cómo:
 - Guardar y recuperar el usuario autenticado.
 - Medir el tiempo de sesión.
 - Crear endpoints seguros basados en sesión **sin usar Spring Security** ni JPA.
+
+## 3.14 Trabajando con Archivos JSON
+
+En el desarrollo de aplicaciones basadas en **Spring Boot**, es común la necesidad de consumir datos estructurados almacenados en archivos de configuración o catálogos estáticos. Uno de los formatos más utilizados para este propósito es **JSON (JavaScript Object Notation)**, debido a su simplicidad, legibilidad y amplia interoperabilidad entre sistemas.
+
+Dentro de un proyecto Spring Boot, los archivos ubicados en el directorio `src/main/resources` forman parte del **classpath de la aplicación**. Durante el proceso de compilación y empaquetado, dichos recursos son incorporados al artefacto final (JAR o WAR), lo que implica que su acceso no debe realizarse como archivos físicos del sistema, sino como **recursos gestionados por el classloader** de Java.
+
+Spring Framework proporciona una abstracción denominada `Resource`, la cual permite acceder a distintos tipos de recursos (classpath, filesystem, URL, entre otros) de manera uniforme. En el caso de recursos ubicados en el classpath, el uso de implementaciones como `ClassPathResource` garantiza la correcta lectura del contenido independientemente del entorno de ejecución. Esta aproximación evita dependencias directas con la estructura del sistema de archivos y asegura portabilidad entre entornos de desarrollo, pruebas y producción.
+
+Para la deserialización del contenido JSON, Spring Boot integra de forma nativa la biblioteca **Jackson**, la cual permite transformar datos estructurados en representaciones tipadas del dominio mediante el uso de objetos Java (POJOs). Cuando el archivo JSON contiene colecciones de elementos, como listas de productos con atributos definidos, es necesario emplear mecanismos que preserven la información de tipos genéricos durante el proceso de lectura, asegurando una conversión consistente y segura.
+
+Desde una perspectiva arquitectónica, el uso de archivos JSON en `resources` se justifica principalmente en escenarios donde los datos poseen un carácter **estático o semiestático**, tales como catálogos iniciales, configuraciones base o información de referencia. En sistemas de mayor complejidad, como plataformas educativas o sistemas de gestión, esta técnica suele emplearse como una etapa inicial de carga de datos, previo a su persistencia en una base de datos o a su exposición controlada a través de servicios de aplicación.
+
+En conclusión, el acceso a archivos JSON desde el classpath en Spring Boot constituye una práctica estándar que combina portabilidad, desacoplamiento y claridad estructural. Su correcta implementación requiere comprender el modelo de empaquetado de la plataforma, la abstracción de recursos provista por el framework y los mecanismos de serialización utilizados para transformar datos externos en estructuras internas del sistema.
+
+### 3.14.1 Dependencias requeridas
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter</artifactId>
+</dependency>
+```
+
+```xml
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+</dependency>
+```
+
+### Ejercicio Guiado
+
+1) **Estructura del archivo JSON en `resources`**
+
+**Ubicación recomendada:**
+
+```
+src/main/resources/data/products.json
+```
+
+**Contenido del archivo:**
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Teclado Mecánico",
+    "precio": 250000,
+    "stock": 15
+  },
+  {
+    "id": 2,
+    "nombre": "Mouse Gamer",
+    "precio": 120000,
+    "stock": 30
+  },
+  {
+    "id": 3,
+    "nombre": "Monitor 24 pulgadas",
+    "precio": 950000,
+    "stock": 8
+  }
+]
+```
+
+Este JSON representa **una colección**, por lo tanto en Java se mapeará como `List<Producto>`.
+
+------
+
+2) **Crear el POJO / DTO `Producto`**
+
+Este objeto representa **una fila del JSON**.
+
+```java
+public class Producto {
+
+    private Long id;
+    private String nombre;
+    private double precio;
+    private int stock;
+
+    public Producto() {
+    }
+
+    public Producto(Long id, String nombre, double precio, int stock) {
+        this.id = id;
+        this.nombre = nombre;
+        this.precio = precio;
+        this.stock = stock;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getNombre() {
+        return nombre;
+    }
+
+    public double getPrecio() {
+        return precio;
+    }
+
+    public int getStock() {
+        return stock;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public void setNombre(String nombre) {
+        this.nombre = nombre;
+    }
+
+    public void setPrecio(double precio) {
+        this.precio = precio;
+    }
+
+    public void setStock(int stock) {
+        this.stock = stock;
+    }
+}
+```
+
+> [!IMPORTANT]
+>
+> **Notas pedagógicas:**
+>
+> - Se requiere **constructor vacío** para que Jackson pueda instanciar el objeto.
+> - Los nombres de los atributos **deben coincidir** con las claves del JSON.
+
+------
+
+3) Leer el JSON desde `resources` usando `ClassPathResource`
+
+> [!CAUTION]
+>
+> **Concepto clave**
+>
+> Spring Boot empaqueta `resources` dentro del **classpath**. Por ello, el JSON se debe leer **como stream**, no como `File`.
+
+**Servicio lector de productos**
+
+```java
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.stereotype.Service;
+
+import java.io.InputStream;
+import java.util.List;
+
+@Service
+public class ProductJsonService {
+
+    private final ObjectMapper objectMapper;
+
+    public ProductJsonService(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    public List<Producto> obtenerProductos() {
+
+        try (InputStream is =
+                     new ClassPathResource("data/products.json").getInputStream()) {
+
+            return objectMapper.readValue(
+                    is,
+                    new TypeReference<List<Producto>>() {}
+            );
+
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Error al leer el archivo products.json desde resources", e
+            );
+        }
+    }
+}
+```
+
+> [!NOTE]
+>
+> ¿Qué está pasando aquí?
+>
+> 1. `ClassPathResource("data/products.json")`
+>    - Localiza el archivo dentro de `src/main/resources`.
+> 2. `getInputStream()`
+>    - Permite leer el recurso incluso cuando la app está empaquetada en JAR.
+> 3. `TypeReference<List<Producto>>`
+>    - Jackson necesita esta referencia porque trabaja con **genéricos**.
+
+**4) Exponer los productos vía un** `@RestController`
+
+```java
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+public class ProductController {
+
+    private final ProductJsonService productJsonService;
+
+    public ProductController(ProductJsonService productJsonService) {
+        this.productJsonService = productJsonService;
+    }
+
+    @GetMapping("/productos")
+    public List<Producto> listarProductos() {
+        return productJsonService.obtenerProductos();
+    }
+}
+```
+
+Cree archivo de configuración del objectMapper
+
+```java
+package com.bkseducate.app_json_consumer.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+@Configuration
+public class JacksonConfig {
+
+    @Bean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
+    }
+}
+```
+
+> [!NOTE]
+>
+> **¿Por qué usar una clase `@Configuration`?**
+>
+> Desde el punto de vista del contenedor IoC:
+>
+> - `@Configuration` indica que la clase define **beans gestionados**
+> - `@Bean` expone el `ObjectMapper` como dependencia reutilizable
+> - Spring inyecta este `ObjectMapper` en cualquier clase que lo requiera
+>
+> Esto permite:
+>
+> - Centralizar configuración
+> - Evitar duplicación
+> - Asegurar consistencia en serialización/deserialización
+
+Al consumir:
+
+```
+GET http://localhost:8080/productos
+```
+
+Respuesta:
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Teclado Mecánico",
+    "precio": 250000,
+    "stock": 15
+  },
+  ...
+]
+```
+
+Repositorio : https://github.com/trainingLeader/app-json-consumer.git
+
+# 4. SpringBoot Avanzado
+
+En este capítulo **Spring Boot Avanzado** se orienta al estudio profundo de los mecanismos internos, patrones de configuración y capacidades extendidas del framework Spring Boot, más allá de su uso introductorio o convencional. En esta etapa, el análisis se desplaza desde la simple construcción de aplicaciones funcionales hacia la **comprensión estructural del framework**, sus decisiones de diseño y su correcta aplicación en sistemas de mediana y alta complejidad.
+
+Spring Boot se caracteriza por ofrecer un modelo de desarrollo basado en la **auto-configuración**, la **convención sobre configuración** y la integración transparente con el ecosistema Spring. Sin embargo, el uso avanzado del framework exige entender cómo y cuándo intervenir dicho comportamiento por defecto, así como los impactos arquitectónicos que estas intervenciones generan en el ciclo de vida de la aplicación, el contenedor IoC y la gestión de dependencias.
+
+En este capítulo se abordan conceptos que permiten ejercer un control más preciso sobre la infraestructura de la aplicación, tales como la definición explícita de beans, la configuración personalizada de componentes críticos (por ejemplo, serialización, gestión de recursos y contexto de ejecución), el manejo del classpath, y la separación clara de responsabilidades entre capas. Estos temas resultan fundamentales para garantizar mantenibilidad, escalabilidad y coherencia técnica en proyectos reales.
+
+Desde una perspectiva formativa, Spring Boot Avanzado introduce al estudiante en prácticas propias del desarrollo profesional, incluyendo la lectura e interpretación de configuraciones internas, la extensión del framework mediante clases de configuración, y el uso consciente de abstracciones provistas por Spring. El énfasis deja de estar en “hacer que funcione” y se traslada a “entender por qué funciona”, promoviendo un razonamiento arquitectónico sólido.
+
+Asimismo, el capítulo prepara el terreno para la adopción de enfoques más robustos, como arquitecturas limpias, diseño orientado al dominio y principios de desacoplamiento, donde Spring Boot actúa como una capa de infraestructura y no como el núcleo del modelo de negocio. En este contexto, el framework se utiliza como una herramienta estratégica que facilita la orquestación de componentes sin invadir la lógica central del sistema.
+
+En conclusión, el capítulo Spring Boot Avanzado consolida los conocimientos necesarios para utilizar el framework de manera consciente, extensible y alineada con estándares de ingeniería de software, sentando las bases para el desarrollo de aplicaciones empresariales, plataformas educativas y sistemas distribuidos con altos requisitos de calidad técnica.
+
+## 4.1 Hibernate
+
+Es una herramienta de mapeo de objeto relacional (ORM) que permite trabajar los datos de una base de datos (RDBMS) en forma de clases y objetos (lenguaje POO). https://hibernate.org/
+
+<img src="https://i.ibb.co/KJ9mKs0/Hibernate-Arch.png" style="zoom: 50%;" />
+
+**Capa superior: Repositorio / DAO**
+
+**Rol**
+
+La capa **Repositorio / DAO** representa el **punto de entrada desde la aplicación** hacia la persistencia.
+
+**Responsabilidad**
+
+- Encapsular el acceso a datos
+- Exponer operaciones como:
+  - guardar
+  - buscar
+  - actualizar
+  - eliminar
+- Ocultar los detalles técnicos de Hibernate o JDBC
+
+> [!TIP]
+>
+> Esta capa **no sabe** cómo se accede realmente a la base de datos; solo delega la operación. Esto promueve **desacoplamiento** y **mantenibilidad**.
+
+**Dos caminos de acceso: JPA y Hibernate Native API**
+
+Desde el repositorio se pueden tomar **dos rutas**, ambas válidas.
+
+**Java Persistence API (JPA)**
+
+JPA es una **especificación estándar** de Java para persistencia de datos.
+
+**Elemento clave**
+
+- **EntityManager**
+
+El `EntityManager` es el objeto que:
+
+- Gestiona entidades
+- Controla el contexto de persistencia
+- Ejecuta operaciones CRUD
+
+**Características**
+
+- Independiente del proveedor (Hibernate, EclipseLink, etc.)
+- Recomendado para aplicaciones empresariales
+- Mayor portabilidad
+
+📌 En la imagen, el globo verde indica que **EntityManager pertenece a JPA**, no a Hibernate directamente.
+
+------
+
+**Hibernate Native API**
+
+Es la **API propia de Hibernate**, más específica y potente.
+
+**Elemento clave**
+
+- **Session**
+
+La `Session`:
+
+- Es el equivalente funcional del `EntityManager`
+- Ofrece mayor control y funcionalidades avanzadas
+- Está acoplada directamente a Hibernate
+
+📌 En la imagen, el globo morado indica que **Session es propia de Hibernate**.
+
+------
+
+**Núcleo de Hibernate (Core)**
+
+Independientemente de si se usa **JPA o la API nativa**, ambas rutas **convergen aquí**.
+
+**Componentes principales**
+
+Dentro del núcleo de Hibernate aparecen:
+
+- **SessionFactory**
+  - Se crea una vez
+  - Es costosa
+  - Produce sesiones
+- **Session**
+  - Representa una unidad de trabajo
+  - Maneja el ciclo de vida de las entidades
+- **Transaction**
+  - Controla commits y rollbacks
+- **Query**
+  - Ejecuta HQL, JPQL o SQL nativo
+
+**Rol fundamental**
+
+Hibernate:
+
+- Traduce operaciones sobre objetos Java
+- Genera automáticamente SQL
+- Gestiona caché, sincronización y estados de entidades
+
+------
+
+**Capa JDBC**
+
+**Qué representa**
+
+JDBC es la **API de bajo nivel** de Java para interactuar con bases de datos.
+
+**Rol en la arquitectura**
+
+- Hibernate **no accede directamente** a la base de datos
+- Utiliza JDBC como canal de comunicación
+- Gestiona:
+  - conexiones
+  - prepared statements
+  - result sets
+
+📌 Hibernate **envuelve y abstrae** JDBC, evitando que el desarrollador lo use directamente.
+
+------
+
+**Base de datos**
+
+**Rol final**
+
+Es el sistema de persistencia real:
+
+- MySQL
+- PostgreSQL
+- Oracle
+- SQL Server
+- etc.
+
+Hibernate:
+
+- Genera SQL compatible con el dialecto
+- Ejecuta operaciones
+- Recibe resultados
+- Los transforma nuevamente en objetos Java
+
+------
+
+**Flujo completo resumido**
+
+1. La aplicación llama al **Repositorio**
+2. El repositorio usa:
+   - `EntityManager` (JPA) **o**
+   - `Session` (Hibernate)
+3. Hibernate procesa la operación
+4. Hibernate usa JDBC
+5. JDBC ejecuta SQL en la base de datos
+6. El resultado vuelve como objetos Java
+
+### 4.1.1 Tipos de consulta
+
+#### 4.1.1.1 HQL
+
+HQL, o Hibernate Query Language, es un lenguaje de consulta orientado a objetos similar a SQL, pero diseñado específicamente para trabajar con Hibernate, un framework de mapeo objeto-relacional (ORM) en Java. HQL permite realizar consultas y manipulaciones en la base de datos utilizando las clases y atributos del modelo de datos en lugar de las tablas y columnas de la base de datos.
+
+**Características de HQL**
+
+1. **Orientado a objetos**: HQL utiliza las entidades del modelo de datos de Hibernate en lugar de tablas de la base de datos.
+2. **Consulta independiente de la base de datos**: HQL es independiente del sistema de gestión de bases de datos subyacente, lo que facilita la portabilidad del código.
+3. **Similar a SQL**: Aunque HQL es un lenguaje propio de Hibernate, su sintaxis es muy similar a la de SQL, lo que facilita su aprendizaje para quienes ya conocen SQL.
+4. **Soporte para funciones de agregación y subconsultas**: HQL admite funciones de agregación (como SUM, COUNT, AVG) y subconsultas, al igual que SQL.
+5. **Operaciones de asociación y herencia**: HQL permite realizar consultas sobre asociaciones y herencias definidas en el modelo de datos, facilitando la navegación entre entidades relacionadas.
+
+**Ventajas de usar HQL**
+
+- **Abstracción del modelo de datos**: Permite trabajar a un nivel más alto de abstracción, utilizando objetos y sus relaciones.
+- **Portabilidad**: Las consultas HQL no están vinculadas a un SGBD específico, lo que facilita cambiar de una base de datos a otra sin modificar el código de las consultas.
+- **Integración con Hibernate**: HQL se integra perfectamente con las capacidades de Hibernate, como la caché de segundo nivel y las transacciones.
+
+#### 4.1.1.2 Criteria API
+
+La Criteria API en Spring Boot es una forma programática y tipada de construir consultas para bases de datos utilizando Hibernate como proveedor JPA. A diferencia de JPQL (Java Persistence Query Language), que utiliza cadenas de texto para definir consultas, la Criteria API permite construir consultas de manera fluida utilizando la API de Java, lo que facilita la creación de consultas dinámicas y refactorizables.
+
+**Características de la Criteria API**
+
+1. **Tipado seguro**: La Criteria API utiliza clases y métodos en lugar de cadenas de texto, lo que permite que el compilador de Java detecte errores de sintaxis y tipo.
+2. **Consultas dinámicas**: Facilita la construcción de consultas dinámicas en función de los parámetros recibidos en tiempo de ejecución.
+3. **Reutilización**: Las consultas Criteria pueden ser fácilmente reutilizadas y combinadas.
+4. **Facilidad de mantenimiento**: Al estar escritas en código Java, las consultas son más fáciles de mantener y refactorizar.
+
+#### 4.1.1.3 SQL Native
+
+SQL nativo, también conocido como SQL puro o SQL sin procesar, se refiere al uso directo del lenguaje de consulta estructurado (SQL) para interactuar con una base de datos desde una aplicación. A diferencia de los ORM (Object-Relational Mapping) y otras abstracciones que proporcionan una capa intermedia entre el código de la aplicación y la base de datos, el uso de SQL nativo implica escribir consultas SQL directamente.
+
+**Características del SQL Nativo**
+
+1. **Directo y eficiente**: Permite un acceso directo a las capacidades de la base de datos, lo que puede resultar en un mejor rendimiento y control.
+2. **Complejidad de las consultas**: Ideal para consultas complejas y específicas que pueden ser difíciles de expresar utilizando ORM o abstracciones de consultas.
+3. **Dependencia del SGBD**: Las consultas SQL nativas pueden depender de las características específicas del sistema de gestión de bases de datos (SGBD) que se está utilizando, lo que puede afectar la portabilidad de la aplicación.
+
+##### Ejemplo
+
+```java
+@Entity
+public class Empleado {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String nombre;
+    private String departamento;
+    private Double salario;
+
+    // Getters y setters
+}
+```
+
+```java
+public interface EmpleadoRepository extends JpaRepository<Empleado, Long> {
+
+    @Query(value = "SELECT * FROM Empleado WHERE departamento = ?1 AND salario >= ?2", nativeQuery = true)
+    List<Empleado> encontrarPorDepartamentoYSalario(String departamento, Double salarioMinimo);
+}
+```
+
+## 4.2 JPA https://spring.io/projects/spring-data
+
+JPA (Java Persistence API) es una especificación de Java que estandariza el mapeo de objetos Java a tablas en bases de datos relacionales. JPA proporciona un marco común para el acceso y la gestión de datos persistentes en aplicaciones Java, definiendo una API para realizar operaciones CRUD (Crear, Leer, Actualizar y Eliminar) y consultas en bases de datos de manera uniforme.
+
+### 4.2.1 Características de JPA
+
+1. **Mapeo de Entidades**: Define cómo mapear las clases Java a tablas en la base de datos utilizando anotaciones.
+2. **Consultas**: Proporciona JPQL (Java Persistence Query Language) para escribir consultas orientadas a objetos.
+3. **Gestión del Ciclo de Vida de Entidades**: Gestiona el ciclo de vida de las entidades (persistencia, fusión, eliminación).
+4. **Relaciones entre Entidades**: Facilita la definición de relaciones entre entidades (uno a uno, uno a muchos, muchos a uno, muchos a muchos).
+5. **Transacciones**: Maneja transacciones para asegurar la integridad y consistencia de los datos.
+
+### 4.2.2 Componentes Principales de JPA
+
+1. **Entidades**: Clases Java que representan las tablas en la base de datos.
+2. **Entity Manager**: La interfaz principal de JPA que gestiona las operaciones de persistencia.
+3. **Persistencia**: El contexto de persistencia define el entorno en el que se gestionan las entidades.
+4. **Consultas**: JPQL permite realizar consultas a la base de datos de manera similar a SQL, pero con un enfoque orientado a objetos.
+
+### 4.2.3 JPA Query Methods(https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html)
+
+#### 4.2.3.1 Qué son los JPA Query Methods?
+
+Los JPA Query Methods son métodos de consulta definidos en los repositorios de Spring Data JPA. Estos métodos permiten realizar consultas a la base de datos sin necesidad de escribir consultas SQL explícitas. Spring Data JPA genera automáticamente las consultas basadas en los nombres de los métodos siguiendo ciertas convenciones.
+
+#### 4.2.3.2 Convenciones de Nombres en JPA Query Methods
+
+Los nombres de los métodos de consulta siguen ciertas convenciones para que Spring Data JPA pueda derivar la consulta. Aquí hay algunos ejemplos y una lista de las convenciones más comunes:
+
+##### **Simple Keyword**:
+
+- `findBy`: Encuentra por un campo específico.
+- `readBy`: Lee por un campo específico.
+- `queryBy`: Consulta por un campo específico.
+- `countBy`: Cuenta por un campo específico.
+- `getBy`: Obtiene por un campo específico.
+
+##### **Palabras Clave Lógicas**:
+
+- `And`: Conjunción lógica (y).
+- `Or`: Conjunción lógica (o).
+
+##### **Palabras Clave de Comparación**:
+
+- `Is`, `Equals`: Igual a.
+- `Between`: Entre dos valores.
+- `LessThan`, `LessThanEqual`: Menor que, menor o igual que.
+- `GreaterThan`, `GreaterThanEqual`: Mayor que, mayor o igual que.
+- `After`, `Before`: Después de, antes de (normalmente utilizado con fechas).
+- `IsNull`, `IsNotNull`, `NotNull`: Nulo, no nulo.
+- `Like`: Similar a (uso de comodines `%` y `_`).
+- `NotLike`: No similar a.
+- `StartingWith`: Comienza con.
+- `EndingWith`: Termina con.
+- `Containing`: Contiene.
+- `OrderBy`: Ordenado por.
+
+##### **Palabras Clave de Colección**:
+
+- `In`: En una colección.
+- `NotIn`: No en una colección.
+
+## 4.3. Arquitectura Hexagonal
+
+La arquitectura hexagonal, busca que la aplicación pueda funcionar y ser probada **sin depender** de UI, base de datos o servicios externos. La idea es aislar el núcleo de negocio y conectar el mundo externo mediante adaptadores intercambiables.
+
+> [!TIP]
+>
+> La idea central: dependencia hacia adentro
+>
+> En una arquitectura “típica” por capas, a menudo la capa de dominio termina dependiendo de detalles de infraestructura (ORM, HTTP clients, etc.). La hexagonal invierte esto: **el dominio no depende de infraestructura**; la infraestructura depende del dominio. Martin Fowler lo resume con el cambio de dependencias:
+>  **UI → dominio ← datasource**.
+
+#### A. Núcleo (Core)
+
+Suele dividirse en:
+
+- **Dominio (Domain Model)**: reglas de negocio puras (entidades, VOs, agregados, invariantes).
+- **Aplicación (Use Cases / Application Services)**: orquestación de casos de uso (transacciones, coordinación de repositorios/servicios externos vía puertos, validaciones de flujo).
+
+> Nota: Hexagonal no obliga a separar “aplicación vs dominio”, pero es una separación muy común y útil en sistemas medianos/grandes.
+
+#### B. Puertos (Ports)
+
+Son **interfaces** que el núcleo expone o requiere:
+
+1. **Inbound Ports (Driving / Primary ports)**
+    Representan lo que el sistema “ofrece”: casos de uso.
+    Ej.: `EnrollStudentUseCase`, `PayLessonUseCase`.
+2. **Outbound Ports (Driven / Secondary ports)**
+    Representan lo que el sistema “necesita” del exterior: persistencia, mensajería, proveedores, email, storage, etc.
+    Ej.: `CourseRepository`, `PaymentGatewayPort`, `EmailSenderPort`.
+
+Los puertos son el “contrato” estable del core. Todo lo externo se adapta a esos contratos.
+
+#### C. Adaptadores (Adapters)
+
+Implementan puertos y conectan con tecnologías concretas.
+
+1. **Inbound adapters** (controlan el “input” hacia el core)
+
+- REST controllers (Spring MVC), GraphQL resolvers, CLI, consumers de colas, schedulers batch.
+
+1. **Outbound adapters** (conectan el core con el exterior)
+
+- Persistencia: JPA/Hibernate, JDBC, Mongo, etc.
+- Integraciones: clientes HTTP (WebClient/Feign), SDKs, colas (Kafka/Rabbit), S3, etc.
+
+### Beneficios clave
+
+- **Testabilidad**: el core se prueba con dobles (mocks/fakes) de outbound ports; no necesitas DB real para la lógica. 
+- **Evolución tecnológica**: cambias JPA→JDBC, REST→mensajería, proveedor A→B, sin tocar reglas de negocio (solo adaptadores).
+- **Menos acoplamiento**: se reducen dependencias “contaminantes” en el dominio.
+
+> [!TIP]
+>
+> Microsoft describe que, al seguir DIP y DDD, muchas soluciones convergen a estilos como Hexagonal/Ports-and-Adapters/Clean/Onion.
+
+> [!CAUTION]
+>
+> Errores comunes (importante)
+>
+> - Poner `@Entity`, `@Repository`, `JpaRepository` dentro del dominio: eso rompe el aislamiento.
+> - Confundir “hexagonal” con “muchas capas” o con “microservicios”. Hexagonal es **un patrón de arquitectura interna**; puedes aplicarlo en monolitos o microservicios.
+> - “Puertos” como DTOs: no. Puertos son **interfaces** (contratos) de entrada/salida del core.
+
+## 4.4 Domain-Driven Design (DDD)
+
+DDD es un enfoque para diseñar software poniendo el **dominio del negocio** en el centro: lenguaje, modelo y límites del sistema.
+
+### 4.4.1 DDD estratégico (para diseñar el sistema y sus límites)
+
+1. **Ubiquitous Language**
+    Un lenguaje compartido entre negocio y equipo técnico; los nombres del código reflejan conceptos reales.
+2. **Bounded Contexts**
+   Cada contexto define un modelo y lenguaje coherentes; evita que un “modelo gigante” intente representar todo. (Ej.: en un LMS, “Billing” y “Learning” suelen ser contextos distintos).
+3. **Context Mapping**
+    Define cómo se relacionan contextos (integraciones, traducciones, anticorruption layer, etc.).
+
+> El DDD estratégico reduce ambigüedad y evita que una sola taxonomía intente cubrir realidades distintas.
+
+### 4.4.2 DDD táctico (para modelar dentro de un contexto)
+
+Los “building blocks” más usados:
+
+- **Entity**: tiene identidad; cambia con el tiempo.
+- **Value Object**: no tiene identidad propia; se define por su valor; idealmente inmutable.
+- **Aggregate & Aggregate Root**: clúster de entidades/VOs con límites claros; el root protege reglas y consistencia. Evans enfatiza que los invariantes deben mantenerse al confirmar cambios en el agregado. 
+- **Invariants**: reglas que siempre deben cumplirse (p. ej., “no se puede activar una suscripción sin pago confirmado”).
+- **Repository**: colección orientada al dominio para recuperar/guardar agregados (abstracción, no necesariamente “DAO”).
+- **Domain Service**: lógica de dominio que no encaja naturalmente en una entidad/VO.
+- **Domain Events**: eventos del dominio (“LessonPurchased”, “SubscriptionActivated”) para desacoplar reacciones.
+
+Un resumen moderno y accesible de estos bloques (entidades, VOs, servicios, agregados, repositorios) también se encuentra en material académico abierto. 
+
+------
+
+### 4.4.3 Cómo encajan DDD y Hexagonal (lo más importante)
+
+#### Regla práctica
+
+- **DDD** te dice *qué modelar* y *cómo pensar el dominio*.
+- **Hexagonal** te dice *cómo estructurar el software* para que ese dominio quede protegido de detalles externos.
+
+#### En un diseño sólido:
+
+- El **Dominio DDD** vive en el **Core** (sin frameworks).
+- Los **Use Cases** viven como **Inbound Ports** (interfaces) + **Application Services** (implementaciones).
+- Persistencia, mensajería y APIs externas son **Outbound Adapters** implementando **Outbound Ports**.
+
+Esto hace que el modelo DDD sea **portable** y **testeable**, y que la infraestructura sea reemplazable.
+
+## 4.5 Mapeo típico en un backend Java (estructura mental)
+
+### A. Core (sin Spring)
+
+- **domain/**
+  - aggregates, entities, valueobjects
+  - domain services
+  - domain events
+  - políticas e invariantes (métodos del agregado)
+- **application/**
+  - inbound ports (interfaces de casos de uso)
+  - application services (implementación de casos de uso)
+  - DTOs de aplicación (commands/queries) si aplica
+  - outbound ports (interfaces para persistencia e integraciones)
+
+### B. Adapters (con Spring)
+
+- **adapters/in/**
+  - REST controllers / consumers / schedulers
+  - mappers de HTTP ↔ command/query
+- **adapters/out/**
+  - persistence: JPA entities + Spring Data repositories + mapper a dominio
+  - clients: Feign/WebClient, SDKs
+  - messaging producers
+
+### C. Infrastructure / config
+
+- configuración Spring (beans), wiring, perfiles, etc.
+
+------
+
+> [!IMPORTANT]
+>
+> 1. **El dominio no conoce frameworks**
+>     Nada de `@Entity`, `@Transactional`, `JpaRepository` en `domain/`.
+>
+> 2. **El repositorio del dominio es un puerto**
+>     En el core defines `CourseRepository` (interface). En infraestructura lo implementas con JPA/SQL.
+>
+> 3. **Los agregados protegen invariantes**
+>     No “valides todo” solo en controladores. Las reglas críticas viven en el agregado o en domain services. 
+>
+> 4. **Los controladores son adaptadores, no “lógica”**
+>     Hacen: parseo, autenticación/autorización, mapping, llamada al caso de uso, y respuesta.
+>
+> 5. **Pruebas por niveles**
+>
+>    - Unit tests al dominio (sin mocks de framework).
+>
+>    - Tests a casos de uso (mock de outbound ports).
+>
+>    - Integration tests para adaptadores (DB real, wiremock, etc.).
+
+**🗂️ Estructura esperada del proyecto**
+
+```
+/project-root
+ ├── pom.xml
+ ├── README.md
+ └── src/main/java/com/example/project
+     ├── domain
+     │   ├── model
+     │   		├── aggregates
+     │   		├── valueobject
+     │   ├── repositories
+     │   └── exceptions
+     │   └── events
+     ├── application
+     │   ├── config
+     │   └── dtos
+     │   └── exceptions
+     │   └── mappers
+     │   └── ports
+     │   └── usecases
+     ├── infrastructure
+             └── adapters
+                 ├── inbound
+                 │   └── controller
+                 │   └── exceptionhandler
+                 │   └── dtos
+                 └── outbound
+                     └── persistence
+                            └── entities
+                            └── mappers
+                            └── repositories
+```
+
+### 4.5.1 Creación de proyecto Aplicando Hexagonal+DDD y Modular
+
+🛠️ Prerrequisitos en VS Code
+
+**Extensiones necesarias**:
+
+- ✅ [Java Extension Pack](https://marketplace.visualstudio.com/items?itemName=vscjava.vscode-java-pack)
+- ✅ Maven for Java
+- ✅ Spring Boot Extension Pack (opcional pero útil)
+
+**Instalaciones previas**:
+
+- Java JDK 17 o superior
+- Maven (`mvn -v` desde terminal debe funcionar)
+- VS Code configurado para compilar Java
+
+#### 🧱 Crear el proyecto padre
+
+📌 Pasos:
+
+1. Abre **Visual Studio Code**
+
+2. Abre el **Command Palette**: `Ctrl+Shift+P` → `Java: Create Java Project`
+
+3. Selecciona `Maven`
+
+4. Selecciona una carpeta vacía, por ejemplo `miapp`
+
+5. Llena los campos:
+
+   - Group ID: `com.miempresa`
+   - Artifact ID: `miapp`
+   - Version: `1.0.0-SNAPSHOT`
+   - Packaging: `pom`
+
+6. VS Code te generará un proyecto padre (`pom.xml`) . Abra el pom y pegue el siguiente codigo
+
+   > [!NOTE]
+   >
+   > Agregar despues de <version>1.0.0-SNAPSHOT</version>
+   >
+   > <packaging>pom</packaging>
+
+   > [!NOTE]
+   >
+   > Reemplazar
+   >
+   > ```
+   > <properties>
+   > 	<maven.compiler.source>17</maven.compiler.source>
+   > 	<maven.compiler.target>17</maven.compiler.target>
+   > </properties>
+   > ```
+   >
+   > por
+   >
+   > ```
+   >   <properties>
+   >         <java.version>17</java.version>
+   >         <maven.compiler.source>17</maven.compiler.source>
+   >         <maven.compiler.target>17</maven.compiler.target>
+   >         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+   >         <spring-boot.version>3.2.2</spring-boot.version>
+   >   </properties>
+   >   <dependencyManagement>
+   >     <dependencies>
+   >       <dependency>
+   >         <groupId>org.springframework.boot</groupId>
+   >         <artifactId>spring-boot-dependencies</artifactId>
+   >         <version>${spring.boot.version}</version>
+   >         <type>pom</type>
+   >         <scope>import</scope>
+   >       </dependency>
+   >     </dependencies>
+   >   </dependencyManagement>
+   >   <build>
+   >     <pluginManagement>
+   >       <plugins>
+   >         <plugin>
+   >           <groupId>org.springframework.boot</groupId>
+   >           <artifactId>spring-boot-maven-plugin</artifactId>
+   >         </plugin>
+   >         <plugin>
+   >           <groupId>io.takari</groupId>
+   >           <artifactId>maven-wrapper-plugin</artifactId>
+   >           <version>3.1.1</version>
+   >           <executions>
+   >             <execution>
+   >               <goals>
+   >                 <goal>wrapper</goal>
+   >               </goals>
+   >             </execution>
+   >           </executions>
+   >         </plugin>
+   >       </plugins>
+   >     </pluginManagement>
+   >   </build>
+   > ```
+   >
+   > 
+
+   
+
+#### 📦 Crear los submódulos (`domain`, `application`, `infrastructure`)
+
+1. Haga clic derecho en el espacio vacío del explorador de proyectos de visual studio code y en el menu emergente seleccione maven>new module
+
+2. El asistente guía solicita que se seleccione el proyecto padre
+
+   <img src="https://i.ibb.co/YTKDdKmK/image.png" style="zoom: 67%;" />
+
+3. Posteriormente solicita que se ingrese el nombre del modulo a crear para el ejemplo ingresamos **domain**
+
+   <img src="https://i.ibb.co/1DLcJp7/image.png" style="zoom:67%;" />
+
+4. Repetimos estos mismos pasos para application e infrastructure.
+
+5. Buscamos en cada proyecto creado src/main/java/com.bkseducate y eliminamos el archivo **Main**
+
+#### **🚀 Modifique actualizando pom de Infrastructure**
+
+Agregue el siguiente codigo
+
+```xml
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.bkseducate</groupId>
+            <artifactId>application</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+        </plugins>
+    </build>
+```
+
+despues de:
+
+```xml
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+    </properties>
+```
+
+#### **🚀 Agregar clase `MiappApplication.java` (main class)**
+
+1. En infraestructura haga click (+) en el GroupID y seleccione crear paquete. Y llámelo infrastructure
+
+   <img src="https://i.ibb.co/vCw80Byh/image.png" style="zoom:67%;" />
+
+   ![](https://i.ibb.co/Xfh7JLHy/image.png)
+
+   > [!IMPORTANT]
+   >
+   > Repita estos mismos pasos para cada submodulo (domain y Aplication)
+
+2. Seleccione el paquete com.bkseducate.infrastructure y haga clic en el (+) y seleccione la opcion class y llamela MiappApplication
+
+   > [!NOTE]
+   >
+   > Reemplace
+   >
+   > ```java
+   > public class MiappApplication {
+   > 
+   > }
+   > ```
+   >
+   > Por
+   >
+   > ```java
+   > import org.springframework.boot.SpringApplication;
+   > import org.springframework.boot.autoconfigure.SpringBootApplication;
+   > 
+   > @SpringBootApplication(scanBasePackages = "com.bkseducate")
+   > public class MiappApplication {
+   >     public static void main(String[] args) {
+   >         SpringApplication.run(MiappApplication.class, args);
+   >     }
+   > }
+   > ```
+
+#### **🚀 Agregar dependencia entre módulos**
+
+##### 🧠  `application/pom.xml`
+
+Este módulo representa los **casos de uso**, y **depende del dominio**.
+
+```xml
+  <dependencies>
+    <dependency>
+      <groupId>com.bkseducate</groupId>
+      <artifactId>domain</artifactId>
+      <version>1.0.0-SNAPSHOT</version>
+    </dependency>
+  </dependencies>
+```
+
+##### 🌐 3. `infrastructure/pom.xml`
+
+Este módulo representa la infraestructura: base de datos, controladores REST, main app. **Depende de `application` (que ya depende de `domain`)**.
+
+```xml
+<!-- Dependencia a la capa de aplicación -->
+<dependency>
+  <groupId>com.bkseducate</groupId>
+  <artifactId>application</artifactId>
+  <version>${project.version}</version>
+</dependency>
+</dependencies>
+<dependency>
+    <groupId>com.bksline.lms</groupId>
+    <artifactId>domain</artifactId>
+    <version>${project.version}</version>
+</dependency>
+```
+
+### 4.5.2 Creación del archivo application.yml
+
+Es una alternativa más legible a `application.properties` para configurar propiedades de Spring Boot. Permite organizar la configuración **por niveles jerárquicos** usando indentación (espacios).
+
+🎯 Ejemplo simple de `application.yml`
+
+```
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:demo
+    username: sa
+    password:
+```
+
+🚀 ¿Cómo crear variantes por entorno? (`dev`, `prod`, etc.)
+
+Spring Boot permite tener múltiples archivos de configuración como:
+
+- `application.yml` → config común
+- `application-dev.yml` → solo para desarrollo
+- `application-prod.yml` → solo para producción
+
+Y activa uno u otro según el **perfil activo**.
+
+------
+
+🗂️ Estructura de archivos recomendada
+
+```
+src/
+└── main/
+    └── resources/
+        ├── application.yml
+        ├── application-dev.yml
+        └── application-prod.yml
+```
+
+------
+
+🔄 Cómo activar un perfil (`dev`, `prod`, etc.)
+
+Hay varias formas:
+
+1. En `application.yml` (nivel base):
+
+```
+spring:
+  profiles:
+    active: dev
+```
+
+> Esto activará automáticamente `application-dev.yml`.
+
+Parametros de conexion a Mysql
+
+```
+  datasource:
+    url: jdbc:mysql://localhost:3306/myhexports
+    username: produser
+    password: prodpass
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+```
+
+Parametros de conexion a Postgres
+
+```
+  # Database Configuration - PostgreSQL
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bkslmsdb
+    username: postgres
+    password: 1234
+    driver-class-name: org.postgresql.Driver
+  
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: validate  # Flyway maneja el esquema
+    show-sql: true
+    properties:
+      hibernate:
+        "[format_sql]": true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+```
+
+Configuración Flyway
+
+```
+  # Flyway Configuration
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    # Deshabilitar validación temporalmente para permitir que se ejecuten las nuevas migraciones
+    # Después de ejecutar REPAIR_CHECKSUMS.sql, cambiar esto a true
+    validate-on-migrate: false
+```
+
+Configuracion para carga de archivos
+
+```
+# Media Storage Configuration
+media:
+  storage:
+    # Configuración para almacenamiento local (usado si external.server-url no está configurado)
+    base-path: ./uploads  # Ruta base para almacenar archivos multimedia (relativa al directorio de ejecución)
+    
+    # Configuración para servidor externo (descomentar y configurar para usar servidor externo)
+    # external:
+    #   server-url: http://localhost:8081/api/files  # URL del servidor externo de almacenamiento
+    #   api-key: your-api-key-here  # API key opcional para autenticación con el servidor externo
+```
+
+
+
+## 4.3 Asociaciones(Relaciones)
+
+@ManyToOne
+
+@OneToMany
+
+@OneToOne
+
+@ManyToMany
+
+### 4.3.1 **@ManyToOne**
+
+- **Descripción**: Representa una relación en la que muchos instancias de una entidad están relacionadas con una instancia de otra entidad. Es la parte "muchos" de una relación de uno a muchos.
+- **Uso**: Se usa para definir una relación de muchos a uno en una entidad.
+
+```java
+@Entity
+public class Empleado {
+    @ManyToOne
+    @JoinColumn(name = "departamento_id")
+    private Departamento departamento;
+}
+```
+
+Entidades:
+
+- `Categoria`
+- `Producto`
+
+Relación:
+
+- Una **categoría** puede tener muchos productos
+- Un **producto** pertenece a **una sola categoría**
+
+------
+
+**Entidad `Categoria` (lado “uno”)**
+
+```java
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "categorias")
+public class Categoria {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String nombre;
+
+    public Categoria() {}
+    public Categoria(String nombre) {
+        this.nombre = nombre;
+    }
+
+    public Long getId() {
+        return id;
+    }
+    public String getNombre() {
+        return nombre;
+    }
+    public void setNombre(String nombre) {
+        this.nombre = nombre;
+    }
+}
+```
+
+> [!IMPORTANT]
+>
+> - Esta entidad **no necesita conocer a Producto**
+> - Es común mantenerla simple (aggregate root en DDD)
+
+**Entidad `Producto` con `@ManyToOne` (lado “muchos”)**
+
+```java
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "productos")
+public class Producto {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String nombre;
+    private double precio;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "categoria_id", nullable = false)
+    private Categoria categoria;
+
+    public Producto() {}
+
+    public Producto(String nombre, double precio, Categoria categoria) {
+        this.nombre = nombre;
+        this.precio = precio;
+        this.categoria = categoria;
+    }
+    public Long getId() {
+        return id;
+    }
+    public String getNombre() {
+        return nombre;
+    }
+    public double getPrecio() {
+        return precio;
+    }
+    public Categoria getCategoria() {
+        return categoria;
+    }
+    public void setNombre(String nombre) {
+        this.nombre = nombre;
+    }
+    public void setPrecio(double precio) {
+        this.precio = precio;
+    }
+    public void setCategoria(Categoria categoria) {
+        this.categoria = categoria;
+    }
+}
+```
+
+------
+
+**Explicación detallada de `@ManyToOne`**
+
+```
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "categoria_id", nullable = false)
+private Categoria categoria;
+```
+
+`@ManyToOne`
+
+- Define la relación **muchos → uno**
+- Hibernate sabe que esta entidad contiene la **clave foránea**
+
+`fetch = FetchType.LAZY`
+
+- La categoría **no se carga inmediatamente**
+- Se recupera solo cuando se accede a `producto.getCategoria()`
+- Mejora rendimiento
+
+`@JoinColumn`
+
+- `name`: nombre de la columna FK en la tabla `productos`
+- `nullable = false`: obliga a que todo producto tenga categoría
+
+### 4.3.2 **@OneToMany**
+
+- **Descripción**: Representa una relación en la que una instancia de una entidad está relacionada con muchas instancias de otra entidad. Es la parte "uno" de una relación de uno a muchos.
+- **Uso**: Se usa para definir una relación de uno a muchos en una entidad.
+
+```java
+@Entity
+public class Departamento {
+        @OneToMany(mappedBy = "departamento")
+        private List<Empleado> empleados;
+}
+```
+
+Desde el punto de vista del modelo relacional:
+
+- Una fila en la tabla **padre** puede estar asociada a **muchas filas** en la tabla **hija**
+- La **clave foránea** se ubica en la tabla del lado *many*
+
+Ejemplo típico:
+
+- Un **Curso** tiene muchas **Clases**
+- Una **Orden** tiene muchos **Ítems**
+- Un **Cliente** tiene muchos **Pedidos**
+
+------
+
+**Escenario del ejemplo**
+
+Se modelará la relación:
+
+> **Curso (1) → Clase (N)**
+
+- Un curso puede contener múltiples clases
+- Cada clase pertenece a un único curso
+
+------
+
+**Entidad del lado MANY (Clase)**
+
+```java
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "clases")
+public class Clase {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String titulo;
+
+    @ManyToOne
+    @JoinColumn(name = "curso_id", nullable = false)
+    private Curso curso;
+
+    protected Clase() {
+    }
+
+    public Clase(String titulo, Curso curso) {
+        this.titulo = titulo;
+        this.curso = curso;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getTitulo() {
+        return titulo;
+    }
+
+    public Curso getCurso() {
+        return curso;
+    }
+}
+```
+
+Puntos clave
+
+- `@ManyToOne` **define la clave foránea**
+- `@JoinColumn` crea la columna `curso_id`
+- Esta es la **entidad propietaria** de la relación
+
+------
+
+**Entidad del lado ONE (Curso)**
+
+```java
+import jakarta.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "cursos")
+public class Curso {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String nombre;
+
+    @OneToMany(mappedBy = "curso",cascade = CascadeType.ALL,orphanRemoval = true)
+    private List<Clase> clases = new ArrayList<>();
+
+    protected Curso() {
+    }
+    public Curso(String nombre) {
+        this.nombre = nombre;
+    }
+    public void agregarClase(Clase clase) {
+        clases.add(clase);
+        clase.setCurso(this);
+    }
+    public void removerClase(Clase clase) {
+        clases.remove(clase);
+        clase.setCurso(null);
+    }
+    public Long getId() {
+        return id;
+    }
+    public String getNombre() {
+        return nombre;
+    }
+    public List<Clase> getClases() {
+        return clases;
+    }
+}
+```
+
+⚠️ Para que el ejemplo sea completo, se debe añadir el setter:
+
+```
+public void setCurso(Curso curso) {
+    this.curso = curso;
+}
+```
+
+------
+
+**Explicación de `@OneToMany` (línea por línea)**
+
+```
+@OneToMany(
+    mappedBy = "curso",
+    cascade = CascadeType.ALL,
+    orphanRemoval = true
+)
+```
+
+**`mappedBy = "curso"`**
+
+- Indica que **la relación está mapeada por el atributo `curso`**
+- Evita la creación de una tabla intermedia
+- Define esta entidad como **lado inverso**
+
+------
+
+**`cascade = CascadeType.ALL`**
+
+Propaga operaciones:
+
+| Operación en Curso | Impacto en Clase |
+| ------------------ | ---------------- |
+| persist            | persist          |
+| remove             | remove           |
+| merge              | merge            |
+
+------
+
+**`orphanRemoval = true`**
+
+- Si una clase se elimina de la colección Y no está asociada a otro curso Hibernate elimina el registro automáticamente
+
+#### 4.3.2.1 **Relación OneToMany Bidireccional**
+
+Una relación bidireccional OneToMany (Uno a Muchos) en JPA (Java Persistence API) es una relación en la que una entidad tiene una colección de otra entidad, y esa otra entidad tiene una referencia de vuelta a la primera entidad. En otras palabras, ambas entidades están conscientes de la relación y pueden navegar a través de ella en ambas direcciones.  
+
+**En la entidad Padre se debe agregar la siguiente estructura:**
+
+```java
+@OneToMany(mappedBy = "survey", cascade = CascadeType.ALL)
+@JsonManagedReference
+private Set<Chapter> chapter = new HashSet<>();
+```
+
+> [!TIP]
+>
+> **`@OneToMany`**: Indica que es una relación de "uno a muchos", donde un solo objeto de la entidad actual (por ejemplo, `Parent`) tiene múltiples objetos relacionados (en este caso, `Child`).
+>
+> **`mappedBy = "survey"`**: El parámetro `mappedBy` indica el **lado inverso de la relación**, o sea, la propiedad en la entidad `Chapter` que mapea esta relación. Esto significa que en la entidad `Chapter`, hay una propiedad llamada `survey` que establece la relación con `Survey`. Básicamente, `Chapter` contiene una referencia a `Survey`.
+>
+> **`cascade = CascadeType.ALL`**: Esto especifica el tipo de operaciones de cascada que deben aplicarse a las entidades relacionadas. `CascadeType.ALL` indica que cualquier operación (como `persist`, `merge`, `remove`, `refresh`) realizada sobre la entidad `Survey` se aplicará también a las entidades `Chapter` relacionadas. Por ejemplo, si se guarda o elimina un `Survey`, todos los `Chapter` asociados también serán guardados o eliminados.
+>
+> **`Set<Chapter> chapter = new HashSet<>()`**: Esto define una colección de capítulos (`Chapter`) relacionados con esta entidad `Survey`. Estamos utilizando un `Set` para evitar elementos duplicados.
+
+**`@JsonManagedReference`**:
+
+Esta es una anotación de **Jackson** que se utiliza para gestionar la serialización JSON en relaciones bidireccionales, evitando problemas de **recursión infinita** al serializar las entidades.
+
+**En la entidad Hija se debe agregar**
+
+```java
+@ManyToOne
+@JoinColumn(name = "survey_id")
+@JsonBackReference
+Survey survey;
+```
+
+### 4.3.3 **`@ManyToOne`**
+
+La anotación `@ManyToOne` indica una relación de **muchos a uno** entre dos entidades. En este caso, una entidad (probablemente `Chapter`) tiene una relación con una entidad `Survey`. La relación de "muchos a uno" significa que **muchos objetos** de la entidad `Chapter` pueden estar asociados con **una sola** encuesta (`Survey`).
+
+- **Relación bidireccional**: En este contexto, un `Chapter` pertenece a una `Survey`, y una `Survey` puede estar asociada con muchos `Chapter`. Esta es la relación inversa a la que tienes en la otra entidad (`Survey`).
+
+> [!NOTE]
+>
+> La anotación **`@ManyToOne`** se utiliza cuando **muchas instancias de una entidad** están asociadas a **una sola instancia de otra entidad**.
+
+> [!IMPORTANT]
+>
+> Muchas filas de una tabla apuntan a una sola fila de otra tabla mediante una clave foránea.
+
+> [!TIP]
+>
+> Ejemplo típico:
+>
+> - Muchos **productos** pertenecen a una sola **categoría**
+> - Muchas **clases** pertenecen a un solo **curso**
+> - Muchos **empleados** pertenecen a un solo **departamento**
+
+#### Ejemplo práctico: Producto → Categoría
+
+#### Escenario
+
+- Un **Producto** pertenece a **una Categoría**
+- Una **Categoría** puede tener **muchos Productos**
+
+------
+
+**Entidad `Categoria`**
+
+```
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "categorias")
+public class Categoria {
+
+    @Id
+    private Long id;
+    private String nombre;
+
+    public Categoria() {
+    }
+
+    public Categoria(Long id, String nombre) {
+        this.id = id;
+        this.nombre = nombre;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getNombre() {
+        return nombre;
+    }
+}
+```
+
+------
+
+**Entidad `Producto` usando `@ManyToOne`**
+
+```
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "productos")
+public class Producto {
+
+    @Id
+    private Long id;
+
+    private String nombre;
+
+    private double precio;
+
+    @ManyToOne
+    @JoinColumn(name = "categoria_id")
+    private Categoria categoria;
+
+    public Producto() {
+    }
+
+    public Producto(Long id, String nombre, double precio, Categoria categoria) {
+        this.id = id;
+        this.nombre = nombre;
+        this.precio = precio;
+        this.categoria = categoria;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getNombre() {
+        return nombre;
+    }
+
+    public double getPrecio() {
+        return precio;
+    }
+
+    public Categoria getCategoria() {
+        return categoria;
+    }
+}
+```
+
+------
+
+**¿Qué hace exactamente `@ManyToOne`?**
+
+```
+@ManyToOne
+@JoinColumn(name = "categoria_id")
+```
+
+#### Explicación técnica
+
+| Elemento       | Función                             |
+| -------------- | ----------------------------------- |
+| `@ManyToOne`   | Indica la relación muchos → uno     |
+| `@JoinColumn`  | Define la columna FK en la tabla    |
+| `categoria_id` | Clave foránea hacia `categorias.id` |
+
+### 4.3.4 **@OneToOne**
+
+- **Descripción**: Representa una relación en la que una instancia de una entidad está relacionada con una única instancia de otra entidad.
+- **Uso**: Se usa para definir una relación uno a uno en una entidad.
+
+> [!TIP]
+>
+> En términos relacionales:
+>
+> > **Una fila de una tabla se relaciona con exactamente una fila de otra tabla.**
+
+Ejemplos típicos:
+
+- Un **Usuario** tiene un solo **Perfil**
+- Una **Persona** tiene un solo **Documento de Identidad**
+- Un **Empleado** tiene un solo **Contrato**
+
+#### Ejemplo práctico: Usuario ↔ Perfil
+
+##### Escenario
+
+- Cada **Usuario** tiene **un Perfil**
+- Cada **Perfil** pertenece a **un solo Usuario**
+
+------
+
+**1) Entidad `Usuario` (lado propietario)**
+
+```
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "usuarios")
+public class Usuario {
+
+    @Id
+    private Long id;
+
+    private String username;
+
+    @OneToOne
+    @JoinColumn(name = "perfil_id", unique = true)
+    private Perfil perfil;
+
+    public Usuario() {}
+
+    public Usuario(Long id, String username, Perfil perfil) {
+        this.id = id;
+        this.username = username;
+        this.perfil = perfil;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public Perfil getPerfil() {
+        return perfil;
+    }
+}
+```
+
+¿Por qué este es el **lado propietario**?
+
+- Contiene la **clave foránea (`perfil_id`)**
+- Controla la relación en base de datos
+
+------
+
+**2) Entidad `Perfil` (lado inverso)**
+
+```java
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "perfiles")
+public class Perfil {
+
+    @Id
+    private Long id;
+    private String email;
+    
+    @OneToOne(mappedBy = "perfil")
+    private Usuario usuario;
+
+    public Perfil() {}
+
+    public Perfil(Long id, String email) {
+        this.id = id;
+        this.email = email;
+    }
+    public Long getId() {
+        return id;
+    }
+    public String getEmail() {
+        return email;
+    }
+
+    public Usuario getUsuario() {
+        return usuario;
+    }
+}
+```
+
+**`mappedBy`**
+
+- Indica que **Perfil no controla la relación**
+- Evita la creación de una segunda columna FK
+- La relación queda centralizada en `Usuario`
+
+### 4.3.5 Asociación @ManyToMany (Llaves compuestas)
+
+> [!TIP]
+>
+> Una relación **`@ManyToMany`** implica que:
+>
+> > **Muchas instancias de una entidad se relacionan con muchas instancias de otra entidad.**
+
+Ejemplos típicos:
+
+- Estudiantes ↔ Cursos
+- Usuarios ↔ Roles
+- Productos ↔ Órdenes
+
+Cuando esta relación **requiere atributos propios** (por ejemplo: fecha de inscripción, estado, calificación), **no debe modelarse como un `@ManyToMany` simple**. En su lugar, se introduce una **entidad intermedia** con **llave primaria compuesta**.
+
+> [!CAUTION]
+>
+> 📌 **Regla clave**
+>
+> Si la tabla intermedia tiene columnas adicionales, el `@ManyToMany` directo es incorrecto.
+
+> [!IMPORTANT]
+>
+> **`@Embeddable`**:
+>
+> La anotación `@Embeddable` indica que esta clase puede ser **incrustada** en otra entidad como parte de su clave primaria. Es decir, esta clase será utilizada como una **clave compuesta** en una entidad que involucra una relación Many-to-Many entre `Estudiante` y `Curso`.
+>
+> En este caso, `EstudianteCursoId` representa una clave compuesta con los atributos `estudianteId` y `cursoId`, que combinados, identifican de manera única un registro en la tabla intermedia que vincula `Estudiante` y `Curso`.
+
+> [!IMPORTANT]
+>
+> **Implementación de `Serializable`**:
+>
+> La clase `InscripcionId` implementa la interfaz `Serializable`. Esto es necesario porque JPA requiere que las clases que representan claves compuestas sean serializables. La serialización permite convertir un objeto en una secuencia de bytes, que puede ser almacenada o transmitida y luego reconstruida.
+>
+> - **`estudianteId`**: La clave primaria de la entidad `Estudiante`.
+> - **`cursoId`**: La clave primaria de la entidad `Curso`.
+
+> [!IMPORTANT]
+>
+> **JPA usará estos dos campos para generar la clave compuesta en la entidad que los use como clave primaria.**
+
+> [!IMPORTANT]
+>
+> **Métodos `equals` y `hashCode`**:
+>
+> Estos dos métodos son fundamentales en cualquier clase que represente una clave compuesta, ya que JPA utiliza estos métodos para comprobar la igualdad y gestionar correctamente las entidades en un contexto de persistencia.
+>
+> `Objects.equals` compara los valores de `estudianteId` y `cursoId` entre dos instancias de `EstudianteCursoId`.
+>
+> **`hashCode`**:
+>
+> El método `hashCode` genera un código hash para la instancia de `EstudianteCursoId`, basado en `estudianteId` y `cursoId`. JPA utiliza este código hash para optimizar operaciones de almacenamiento en caché y búsqueda.
+>
+
+> [!TIP]
+>
+> `@EmbeddedId`
+>
+> La anotación **`@EmbeddedId`** se utiliza en **JPA/Hibernate** para indicar que la **clave primaria de una entidad está compuesta por múltiples atributos**, los cuales se agrupan en una **clase embebida**.
+>
+> En términos formales:
+>
+> > **`@EmbeddedId` permite definir una clave primaria compuesta utilizando un objeto de valor (`@Embeddable`).**
+>
+> ------
+>
+> ¿Por qué existe `@EmbeddedId`?
+>
+> En modelos relacionales reales, no todas las tablas pueden identificarse con una sola columna.
+>  Ejemplos frecuentes:
+>
+> - Inscripciones `(estudiante_id, curso_id)`
+> - Detalles de factura `(factura_id, producto_id)`
+> - Históricos `(entidad_id, fecha)`
+>
+> JPA no permite múltiples `@Id` simples sin una estrategia explícita.`@EmbeddedId` resuelve este problema **de forma tipada y estructurada**.
+
+#### Escenario de ejemplo: Estudiante ↔ Curso (con entidad intermedia)
+
+##### Requerimiento
+
+- Un **Estudiante** puede inscribirse en muchos **Cursos**
+- Un **Curso** puede tener muchos **Estudiantes**
+- La inscripción tiene atributos:
+  - fechaInscripcion
+  - estado
+
+Esto exige una **entidad de asociación** con **llave compuesta**.
+
+------
+
+**Entidades principales**
+
+**Entidad `Estudiante`**
+
+```java
+import jakarta.persistence.*;
+import java.util.Set;
+
+@Entity
+@Table(name = "estudiantes")
+public class Estudiante {
+
+    @Id
+    private Long id;
+
+    private String nombre;
+
+    @OneToMany(mappedBy = "estudiante")
+    private Set<Inscripcion> inscripciones;
+}
+```
+
+------
+
+**Entidad `Curso`**
+
+```java
+import jakarta.persistence.*;
+import java.util.Set;
+
+@Entity
+@Table(name = "cursos")
+public class Curso {
+
+    @Id
+    private Long id;
+
+    private String titulo;
+
+    @OneToMany(mappedBy = "curso")
+    private Set<Inscripcion> inscripciones;
+}
+```
+
+> [!IMPORTANT]
+>
+> 📌 Obsérvese que **no existe `@ManyToMany` directo** entre `Estudiante` y `Curso`.
+
+------
+
+**2) Llave primaria compuesta (`@Embeddable`)**
+
+La clave compuesta está formada por:
+
+- `estudiante_id`
+- `curso_id`
+
+```java
+import jakarta.persistence.Embeddable;
+import java.io.Serializable;
+import java.util.Objects;
+
+@Embeddable
+public class InscripcionId implements Serializable {
+
+    private Long estudianteId;
+    private Long cursoId;
+
+    public InscripcionId() {}
+
+    public InscripcionId(Long estudianteId, Long cursoId) {
+        this.estudianteId = estudianteId;
+        this.cursoId = cursoId;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof InscripcionId)) return false;
+        InscripcionId that = (InscripcionId) o;
+        return Objects.equals(estudianteId, that.estudianteId) &&
+               Objects.equals(cursoId, that.cursoId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(estudianteId, cursoId);
+    }
+}
+```
+
+📌 `equals` y `hashCode` **son obligatorios** para llaves compuestas.
+
+------
+
+**3) Entidad intermedia `Inscripcion`**
+
+```java
+import jakarta.persistence.*;
+import java.time.LocalDate;
+
+@Entity
+@Table(name = "inscripciones")
+public class Inscripcion {
+
+    @EmbeddedId
+    private InscripcionId id;
+
+    @ManyToOne
+    @MapsId("estudianteId")
+    @JoinColumn(name = "estudiante_id")
+    private Estudiante estudiante;
+
+    @ManyToOne
+    @MapsId("cursoId")
+    @JoinColumn(name = "curso_id")
+    private Curso curso;
+
+    private LocalDate fechaInscripcion;
+
+    private String estado;
+}
+```
+
+**Explicación clave**
+
+| Elemento      | Función                                               |
+| ------------- | ----------------------------------------------------- |
+| `@EmbeddedId` | Declara la PK compuesta                               |
+| `@MapsId`     | Vincula la FK con la PK                               |
+| `@ManyToOne`  | Cada inscripción pertenece a un estudiante y un curso |
+| `Inscripcion` | Se convierte en **Aggregate Root de la relación**     |
+
+### 4.3.6 @JoinTable
+
+La anotación `@JoinTable` en JPA se utiliza para definir la tabla de unión que se emplea en relaciones muchos a muchos (Many-to-Many) o en relaciones uno a muchos (One-to-Many) donde se desea personalizar la tabla intermedia y las columnas de la relación. Esta anotación proporciona un control detallado sobre cómo se gestionan las uniones entre las tablas en una base de datos relacional.
+
+> [!IMPORTANT]
+>
+> `@JoinTable` es la anotación que:
+>
+> - Define el **nombre de la tabla intermedia**
+> - Declara las **claves foráneas** hacia ambas entidades
+> - Controla la estructura del join sin crear una entidad explícita
+
+#### 4.2.6.1 `@JoinTable` en Relaciones Muchos a Muchos
+
+Ejemplo práctico: Estudiante ↔ Curso (ManyToMany simple)
+
+**Escenario**
+
+- Un **Estudiante** puede estar en muchos **Cursos**
+- Un **Curso** puede tener muchos **Estudiantes**
+- La tabla intermedia **no tiene atributos adicionales**
+
+Este es el **caso correcto** para usar `@ManyToMany` + `@JoinTable`.
+
+------
+
+1) Entidad `Estudiante` (lado propietario)
+
+```java
+import jakarta.persistence.*;
+import java.util.Set;
+
+@Entity
+@Table(name = "estudiantes")
+public class Estudiante {
+
+    @Id
+    private Long id;
+
+    private String nombre;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "estudiante_curso",
+        joinColumns = @JoinColumn(name = "estudiante_id"),
+        inverseJoinColumns = @JoinColumn(name = "curso_id")
+    )
+    private Set<Curso> cursos;
+}
+```
+
+Detalles clave
+
+- `name`: nombre real de la tabla intermedia
+- `joinColumns`: FK que apunta a **Estudiante**
+- `inverseJoinColumns`: FK que apunta a **Curso**
+- Este es el **lado propietario** de la relación
+
+------
+
+2) Entidad `Curso` (lado inverso)
+
+```java
+import jakarta.persistence.*;
+import java.util.Set;
+
+@Entity
+@Table(name = "cursos")
+public class Curso {
+
+    @Id
+    private Long id;
+
+    private String titulo;
+
+    @ManyToMany(mappedBy = "cursos", fetch = FetchType.LAZY)
+    private Set<Estudiante> estudiantes;
+}
+```
+
+**`mappedBy`**
+
+- Indica que `Curso` **no controla la relación**
+- Evita la creación de una segunda tabla intermedia
+- La relación queda centralizada en `Estudiante`
+
+> [!IMPORTANT]
+>
+> **Beneficios reales de `LAZY`**
+>
+> - Evita consultas innecesarias
+> - Reduce el tamaño de los resultados
+> - Previene el problema de **carga excesiva de datos**
+> - Es esencial en sistemas medianos y grandes (LMS, ERP, CRM)
+>
+> 📌 **Buenas prácticas profesionales** recomiendan:
+>
+> > ```
+> > @ManyToMany` → siempre `LAZY
+> > ```
+
+#### 4.3.6.2 Uso de `@JoinTable` en Relaciones Uno a Muchos
+
+**¿Qué hace `@JoinTable` en `@OneToMany`?**
+
+`@JoinTable` define explícitamente:
+
+- Una **tabla intermedia**
+- Una FK hacia la entidad “uno”
+- Una FK hacia la entidad “muchos”
+
+```java
+@OneToMany
+@JoinTable(
+    name = "tabla_union",
+    joinColumns = @JoinColumn(name = "id_uno"),
+    inverseJoinColumns = @JoinColumn(name = "id_muchos")
+)
+```
+
+Esto implica que:
+
+La tabla “muchos” no contiene la FK. La relación queda externalizada en la tabla de unión
+
+Ejemplo práctico: Pedido → Producto (OneToMany con JoinTable)
+
+Escenario
+
+- Un **Pedido** tiene muchos **Productos**
+- Un **Producto** puede existir independientemente del Pedido
+- No se desea modificar la tabla `productos` con una FK
+
+------
+
+Entidad `Pedido` (lado propietario)
+
+```java
+import jakarta.persistence.*;
+import java.util.Set;
+
+@Entity
+@Table(name = "pedidos")
+public class Pedido {
+
+    @Id
+    private Long id;
+    private String numero;
+
+    @OneToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "pedido_producto",
+        joinColumns = @JoinColumn(name = "pedido_id"),
+        inverseJoinColumns = @JoinColumn(name = "producto_id")
+    )
+    private Set<Producto> productos;
+}
+```
+
+------
+
+Entidad `Producto`
+
+```java
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "productos")
+public class Producto {
+
+    @Id
+    private Long id;
+    private String nombre;
+    private double precio;
+}
+```
+
+> [!IMPORTANT]
+>
+> Enfoque con `@JoinTable`
+>
+> ✔️ Ventajas:
+>
+> - No altera la tabla “muchos”
+> - Útil cuando la tabla es compartida
+> - Útil con esquemas heredados
+>
+> ❌ Desventajas:
+>
+> - Tabla adicional
+> - Más joins
+> - Mayor complejidad
+> - Menor rendimiento
+
+> [!IMPORTANT]
+>
+> ¿Cuándo usar `@JoinTable` en OneToMany?
+>
+> ✔️ **Uso válido cuando:**
+>
+> - Se trabaja con **bases de datos legadas**
+> - La tabla “muchos” **no puede modificarse**
+> - La relación es opcional o contextual
+> - Se desea desacoplar completamente las entidades
+>
+> ❌ **No usar cuando:**
+>
+> - Se diseña un modelo nuevo
+> - Se busca simplicidad
+> - El rendimiento es crítico
+> - Se sigue DDD estrictamente
+
