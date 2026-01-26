@@ -6776,3 +6776,1930 @@ public class Producto {
 > - El rendimiento es crítico
 > - Se sigue DDD estrictamente
 
+
+
+## 4.4. Excepciones
+
+### 4.4.1 RuntimeException
+
+`RuntimeException` es una clase en Java que extiende `Exception` y se utiliza para representar excepciones que pueden ocurrir durante la ejecución del programa y que no necesariamente necesitan ser declaradas en una cláusula `throws` de un método. Estas excepciones son conocidas como "unchecked exceptions" (excepciones no comprobadas), ya que no son verificadas por el compilador en tiempo de compilación, a diferencia de las "checked exceptions" (excepciones comprobadas).
+
+#### 4.4.1.1 Características de `RuntimeException`
+
+1. **Unchecked Exception**: Las excepciones que heredan de `RuntimeException` no necesitan ser declaradas en la firma del método con `throws`.
+2. **Errores en Tiempo de Ejecución**: Representa errores que típicamente ocurren debido a problemas del programa que son detectados en tiempo de ejecución, como acceso a una posición fuera de los límites de un array, divisiones por cero, o errores de conversión de tipos.
+3. **Manejo Opcional**: Debido a que no necesitan ser declaradas, el manejo de estas excepciones es opcional. Los desarrolladores pueden optar por capturarlas y manejarlas, o dejarlas sin manejar para ser capturadas por el gestor de excepciones predeterminado de la JVM.
+
+**Uso Común**
+
+Algunos ejemplos comunes de excepciones que extienden `RuntimeException` incluyen:
+
+- `NullPointerException`
+- `ArrayIndexOutOfBoundsException`
+- `IllegalArgumentException`
+- `IllegalStateException`
+
+### 4.4.2 @RestControllerAdvice
+
+La anotación `@RestControllerAdvice` en Spring se utiliza para manejar excepciones globalmente y aplicar lógica transversal a todos los controladores REST dentro de una aplicación Spring Boot. Esta anotación combina las funcionalidades de `@ControllerAdvice` y `@ResponseBody`, permitiendo el manejo centralizado de excepciones y respuestas JSON.
+
+**¿Qué es `@RestControllerAdvice`?**
+
+`@RestControllerAdvice` es una especialización de `@ControllerAdvice` que automáticamente incluye la anotación `@ResponseBody`, lo que significa que todos los métodos en una clase anotada con `@RestControllerAdvice` retornarán sus resultados directamente como respuestas JSON. Es una forma conveniente de manejar excepciones y otros aspectos transversales (como configuración global de validaciones) en aplicaciones que exponen APIs RESTful.
+
+```java
+@ResponseStatus(HttpStatus.NOT_FOUND)
+public class UserNotFoundException extends RuntimeException {
+    public UserNotFoundException(Long id) {
+        super("Usuario con ID " + id + " no encontrado.");
+    }
+}
+```
+
+> La anotación `@ResponseStatus` se puede omitir si va a manejar el código HTTP en `@ControllerAdvice`
+
+**`@ControllerAdvice` para manejo global**
+
+```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleUserNotFound(UserNotFoundException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Usuario no encontrado");
+        error.put("detalle", ex.getMessage());
+        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(err ->
+            errors.put(err.getField(), err.getDefaultMessage()));
+        return new ResponseEntity<>(errors, HttpStatus.BAD_REQUEST);
+    }
+
+    // Puedes agregar más handlers: ConstraintViolationException, IllegalArgumentException, etc.
+}
+```
+
+**Usar la excepción en el controlador**
+
+```java
+@GetMapping("/{id}")
+public ResponseEntity<User> getUserById(@PathVariable Long id) {
+    User user = userRepository.findById(id)
+        .orElseThrow(() -> new UserNotFoundException(id));
+    return ResponseEntity.ok(user);
+}
+```
+
+
+
+### 4.4.3 @ExceptionHandler
+
+La anotación `@ExceptionHandler` en Spring se utiliza para manejar excepciones específicas que pueden ocurrir durante la ejecución de un controlador en una aplicación web. Esta anotación se coloca sobre un método en una clase de controlador y le indica a Spring que, cuando se lanza una excepción de un tipo especificado, el método anotado debe ser invocado para manejar dicha excepción.
+
+#### 4.4.3.1 ResponseEntity
+
+`ResponseEntity` es una clase en Spring que representa la respuesta HTTP completa. Se utiliza principalmente en controladores RESTful para personalizar la respuesta HTTP en términos de estado, cabeceras y cuerpo de la respuesta. Aquí hay un desglose de para qué se usa `ResponseEntity`:
+
+1. **Personalización del Estado HTTP**: Permite especificar el estado HTTP (como 200 OK, 404 Not Found, etc.) que se devolverá al cliente.
+2. **Incluir Cabeceras HTTP**: Se pueden agregar cabeceras HTTP personalizadas a la respuesta.
+3. **Definir el Cuerpo de la Respuesta**: Permite especificar el cuerpo de la respuesta, que puede ser cualquier objeto que luego se convierte a JSON o XML según la configuración de Spring.
+
+#### 4.4.3.2 @ResponseStatus
+
+La anotación `@ResponseStatus` en Spring se utiliza para marcar una clase de excepción con un código de estado HTTP específico. Esto permite que cuando se lance esa excepción, el servidor devuelva automáticamente el código de estado HTTP configurado sin necesidad de manejarlo explícitamente en cada controlador.
+
+> `HttpStatus` en Spring es una enumeración (`enum`) que forma parte del paquete `org.springframework.http`. Representa los **códigos de estado HTTP** (como `200 OK`, `404 Not Found`, `500 Internal Server Error`, etc.) que puedes usar para controlar las respuestas HTTP en controladores REST.
+
+##### Códigos de Estado Comunes
+
+- `HttpStatus.OK` (200): Solicitud exitosa.
+- `HttpStatus.CREATED` (201): Recurso creado exitosamente.
+- `HttpStatus.NO_CONTENT` (204): Solicitud exitosa pero sin contenido en la respuesta.
+- `HttpStatus.BAD_REQUEST` (400): Solicitud inválida.
+- `HttpStatus.UNAUTHORIZED` (401): No autorizado.
+- `HttpStatus.FORBIDDEN` (403): Prohibido.
+- `HttpStatus.NOT_FOUND` (404): Recurso no encontrado.
+- `HttpStatus.METHOD_NOT_ALLOWED` (405): Método no permitido.
+- `HttpStatus.CONFLICT` (409): Conflicto en la solicitud.
+- `HttpStatus.INTERNAL_SERVER_ERROR` (500): Error interno del servidor.
+- `HttpStatus.NOT_IMPLEMENTED` (501): No implementado.
+- `HttpStatus.BAD_GATEWAY` (502): Puerta de enlace incorrecta.
+- `HttpStatus.SERVICE_UNAVAILABLE` (503): Servicio no disponible.
+
+Ejemplo
+
+```java
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @GetMapping("/{id}")
+    public ResponseEntity<User> getUserById(@PathVariable Long id) {
+        Optional<User> user = userRepository.findById(id);
+
+        if (user.isPresent()) {
+            return new ResponseEntity<>(user.get(), HttpStatus.OK);
+        } else {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+    }
+}
+```
+
+
+
+### 4.4.4 HttpMessageNotWritableException
+
+La excepción `HttpMessageNotWritableException` en Spring Framework se lanza cuando el framework no puede escribir un cuerpo de mensaje HTTP para una respuesta. Esto puede suceder por varias razones, como problemas con la serialización de objetos a JSON o XML, configuraciones incorrectas del convertidor de mensajes HTTP, o restricciones en los tipos de datos.
+
+**Posibles Causas de `HttpMessageNotWritableException`**
+
+1. **Problemas de Serialización**: Si un objeto no puede ser serializado correctamente a JSON o XML. Por ejemplo, si hay un ciclo en las referencias de los objetos que Jackson no puede resolver.
+2. **Configuración Incorrecta del Convertidor de Mensajes**: Si no hay un convertidor adecuado configurado para el tipo de contenido (por ejemplo, Jackson no está en el classpath para JSON).
+3. **Accesibilidad del Objeto**: Si el objeto a serializar contiene propiedades privadas sin métodos getter públicos.
+4. **Errores en los Datos**: Si los datos del objeto contienen valores no válidos o inesperados que el convertidor no puede manejar.
+
+### 4.4.5 NullPointerException
+
+`NullPointerException` es una excepción en Java que se lanza cuando se intenta utilizar una referencia que apunta a `null` en lugar de una instancia válida de un objeto. Esta excepción es una de las más comunes y puede ocurrir en varias situaciones, como al intentar acceder a métodos o propiedades de un objeto no inicializado.
+
+### Ejercicio
+
+1. Clone el repo https://github.com/trainingLeader/hexagonal-app.git
+
+2. Cree una clase controller llamada AppController
+
+   ```java
+   package com.hexagonal.hexagonal_app.infrastructure.controllers;
+   
+   import org.springframework.web.bind.annotation.RestController;
+   import org.springframework.web.bind.annotation.GetMapping;
+   
+   @RestController
+   public class AppController {
+   
+       @GetMapping("/app")
+       public String index(){
+           return "Ok 200";
+       }
+   }
+   
+   ```
+
+   Agregue al endPoint int valor = 100/0;
+
+   ```java
+   package com.hexagonal.hexagonal_app.infrastructure.controllers;
+   
+   import org.springframework.web.bind.annotation.RestController;
+   import org.springframework.web.bind.annotation.GetMapping;
+   
+   @RestController
+   public class AppController {
+   
+       @GetMapping("/app")
+       public String index(){
+           int valor = 100/0;
+           return "Ok 200";
+       }
+   }
+   ```
+
+   > [!CAUTION]
+   >
+   > 	"timestamp": "2024-08-27T13:35:03.993+00:00",
+   > 	"status": 500,
+   > 	"error": "Internal Server Error",
+   > 	"trace": "java.lang.ArithmeticException: / by zero\r\n\tat com.hexagonal.hexagonal_app.infrastructure.controllers.AppController.index(AppController.java:11)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\r\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\r\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\r\n\tat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:255)\r\n\tat 
+
+3. Cree paquete models en el paquete infrastructure
+
+4. En models cree una clase llamada ErrorCustom y genere los métodos Getter y Setter
+
+   ```java
+   public class ErrorCustom {
+       private String message;
+       private String error;
+       private int status;
+       private Date date;
+       public String getMessage() {
+           return message;
+       }
+       public void setMessage(String message) {
+           this.message = message;
+       }
+       public String getError() {
+           return error;
+       }
+       public void setError(String error) {
+           this.error = error;
+       }
+       public int getStatus() {
+           return status;
+       }
+       public void setStatus(int status) {
+           this.status = status;
+       }
+       public Date getDate() {
+           return date;
+       }
+       public void setDate(Date date) {
+           this.date = date;
+       }
+   }
+   ```
+
+   
+
+5. Cree un nuevo controller llamada HandleExceptionController y agregue la anotacion @RestControllerAdvice
+
+6. Agregue el siguiente método en el HandlerExceptionController
+
+   ```java
+       @ExceptionHandler({ArithmeticException.class})
+       public ResponseEntity<ErrorCustom> divisionByZero(Exception ex) {
+   
+           ErrorCustom error = new ErrorCustom();
+           error.setDate(new Date());
+           error.setError("Error division por cero!");
+           error.setMessage(ex.getMessage());
+           error.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+   
+           // return ResponseEntity.internalServerError().body(error);
+           return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR.value()).body(error);
+       }
+   ```
+
+   > import java.util.Date;
+   >
+   > import java.util.HashMap;
+   >
+   > import java.util.Map;
+   >
+   > import org.springframework.http.HttpStatus;
+   >
+   > import org.springframework.http.ResponseEntity;
+   >
+   > import org.springframework.http.converter.HttpMessageNotWritableException;
+   >
+   > import org.springframework.web.bind.annotation.ExceptionHandler;
+   >
+   > import org.springframework.web.bind.annotation.ResponseStatus;
+   >
+   > import org.springframework.web.bind.annotation.RestControllerAdvice;
+   >
+   > import org.springframework.web.servlet.NoHandlerFoundException;
+
+   **Explicación**
+
+   Anotación `@ExceptionHandler`: Esta anotación indica que el método `divisionByZero` se utilizará para manejar excepciones del tipo `ArithmeticException`. Spring llamará automáticamente a este método cuando ocurra una excepción de este tipo en cualquier parte del controlador donde esté definido.
+
+   Definición del método `divisionByZero`: Este método recibe como parámetro una excepción (`Exception ex`) y devuelve un objeto `ResponseEntity<ErrorCustom>`. `ResponseEntity` es una clase que representa una respuesta HTTP completa, incluyendo el cuerpo, el estado y los encabezados.
+
+   Creación de un objeto `ErrorCustom`: Aquí se crea una instancia de la clase `ErrorCustom` (que se asume es una clase personalizada para representar detalles de errores). Se configuran varios atributos del error:
+
+   - `date`: la fecha y hora actual.
+   - `error`: un mensaje genérico indicando que ocurrió un error de división por cero.
+   - `message`: el mensaje de la excepción original, que proporciona más detalles sobre lo que salió mal.
+   - `status`: el código de estado HTTP `500` (Internal Server Error).
+
+   **return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR.value()).body(error)**;  Finalmente, el método devuelve un `ResponseEntity` con el código de estado HTTP `500` y el cuerpo de la respuesta que contiene el objeto `ErrorCustom` con los detalles del error.
+
+   > {
+   > 	"message": "/ by zero",
+   > 	"error": "Error division por cero!",
+   > 	"status": 500,
+   > 	"date": "2024-08-27T13:54:21.597+00:00"
+   > }
+
+ 7. Error 404 : Agregue el siguiente método
+
+    ```java
+    @ExceptionHandler(NoHandlerFoundException.class)
+    public ResponseEntity<ErrorCustom> notFoundEx(NoHandlerFoundException e) { 
+            ErrorCustom error = new ErrorCustom();
+            error.setDate(new Date());
+            error.setError("Api rest no encontrado");
+            error.setMessage(e.getMessage());
+    
+            error.setStatus(HttpStatus.NOT_FOUND.value());
+            
+            return ResponseEntity.status(HttpStatus.NOT_FOUND.value()).body(error);
+    }
+    ```
+
+    8. En el archivo de properties agregue **spring.web.resources.add-mappings=false**
+
+    ## Excepciones personalizadas
+
+    1. Cree una nueva clase llamada Use y Role en domain>entities
+
+       ```java
+       public class Role {
+           private String name;
+       
+           public String getName() {
+               return name;
+           }
+       
+           public void setName(String name) {
+               this.name = name;
+           }
+       }
+       ```
+
+       ```java
+       public class User {
+           private Long id;
+           private String name;
+           private String lastname;
+       
+           private Role role;
+           
+           public User(Long id, String name, String lastname) {
+               this.id = id;
+               this.name = name;
+               this.lastname = lastname;
+           }
+           public User() {
+           }
+           public Long getId() {
+               return id;
+           }
+           public void setId(Long id) {
+               this.id = id;
+           }
+           public String getName() {
+               return name;
+           }
+           public void setName(String name) {
+               this.name = name;
+           }
+           public String getLastname() {
+               return lastname;
+           }
+           public void setLastname(String lastname) {
+               this.lastname = lastname;
+           }
+           public Role getRole() {
+               return role;
+           }
+           // public String getRoleName() {
+           //     return role.getName();
+           // }
+           public void setRole(Role role) {
+               this.role = role;
+           }
+       }
+       ```
+
+    2. Cree un interface llamada IUserService
+
+       ```java
+       import java.util.List;
+       import java.util.Optional;
+       
+       public interface IUserService {
+           List<User> findAll();
+           Optional<User> findById(Long id);
+       }
+       ```
+
+    3. Implemente el IUserService. Cree una nueva clase en Infrastructure>repository
+
+       ```java
+       import org.springframework.beans.factory.annotation.Autowired;
+       import org.springframework.stereotype.Service;
+       
+       import com.hexagonal.hexagonal_app.application.service.product.IUserService;
+       import com.hexagonal.hexagonal_app.domain.entities.User;
+       
+       import java.util.List;
+       import java.util.Optional;
+       
+       @Service
+       public class UserImpl implements IUserService {
+       
+           @Autowired
+           private List<User> users;
+       
+           @Override
+           public List<User> findAll() {
+               return users;
+           }
+       
+           @Override
+           public Optional<User> findById(Long id) {
+               return users.stream().filter( usr -> usr.getId().equals(id) ).findFirst();
+           }
+       }
+       ```
+
+       Cree un archivo de configuración llamado AppConfig. Recuerde que este archivo se crea a nivel del paquete principal.
+
+       ```java
+       import java.util.ArrayList;
+       import java.util.List;
+       
+       import org.springframework.context.annotation.Bean;
+       import org.springframework.context.annotation.Configuration;
+       
+       import com.hexagonal.hexagonal_app.domain.entities.User;
+       
+       @Configuration
+       public class AppConfig {
+       
+           @Bean
+           List<User> users(){
+               List<User> users = new ArrayList<>();
+                    users.add(new User(1L,"Carlos","Patiño"));
+                    return users;
+           }
+       }
+       ```
+
+       En la clase **HandlerExceptionController** incorpore el siguiente codigo sino se encuentra implementado:
+
+       ```java
+       @ExceptionHandler(NoHandlerFoundException.class)
+       public ResponseEntity<ErrorCustom> notFoundEx(NoHandlerFoundException e) { 
+               ErrorCustom error = new ErrorCustom();
+               error.setDate(new Date());
+               error.setError("Api rest no encontrado");
+               error.setMessage(e.getMessage());
+       
+               error.setStatus(HttpStatus.NOT_FOUND.value());
+               
+               return ResponseEntity.status(HttpStatus.NOT_FOUND.value()).body(error);
+       }
+       ```
+
+       ### Excepciones Usando Api Optional Java 8
+
+       
+
+    4. el siguiente método en HandlerExceptionController
+
+       ```java
+           @ExceptionHandler({NullPointerException.class, HttpMessageNotWritableException.class,UserNotFoundException.class})
+           @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+           public Map<String, Object> userNotFoundException(Exception ex){
+       
+               Map<String, Object> error = new HashMap<>();
+               error.put("date", new Date());
+               error.put("error", "el usuario o role no existe!");
+               error.put("message", ex.getMessage());
+               error.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+       
+               return error;
+           }
+       ```
+
+    5. En el paquete Infrastructure cree un nuevo paquete llamado exception y Cree una nueva clase llamada UserNotFoundException y agregue el siguiente codigo a la clase.
+
+       ```java
+       package com.hexagonal.hexagonal_app.infrastructure.models.exception;
+       
+       public class UserNotFoundException extends RuntimeException {
+           public UserNotFoundException(String message) {
+               super(message);
+           } 
+       }
+       ```
+
+
+
+### 4.4.6 Validación datos (Validation)
+
+#### Explicación de las Anotaciones
+
+- `@NotBlank`: Asegura que la propiedad no sea `null` y que la cadena no esté vacía ni compuesta solo por espacios en blanco.
+- `@Size(min =, max =)`: Restringe el tamaño de la cadena a un rango específico.
+- `@Email`: Valida que la propiedad sea una dirección de correo electrónico válida.
+- `@Pattern`: Valida que la cadena coincida con la expresión regular proporcionada.
+- `@Valid`: Se usa en el controlador para validar el objeto entrante basado en las anotaciones de validación presentes en la clase.
+
+Ejemplo
+
+```java
+package com.asociacionesapp.app_relationship.entities;
+
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import java.util.Set;
+
+@Entity
+@Table(name="clients")
+public class Client {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @NotNull(message = "El nombre no puede ser nulo")
+    private String name;
+
+    @NotNull(message = "El correo electrónico no puede ser nulo")
+    @Email(message = "Debe proporcionar un correo electrónico válido")
+    private String email;
+
+    @NotNull(message = "El número de teléfono no puede ser nulo")
+    @Pattern(regexp = "^\\+?[0-9. ()-]{7,25}$", message = "Debe proporcionar un número de teléfono válido")
+    private String phoneNumber;
+
+    @OneToMany(mappedBy = "client")
+    private Set<Invoice> invoices;
+
+    // Getters y setters
+}
+
+```
+
+#### 4.4.6.1 Personalizando respuesta con mensaje de error (BindingResult)
+
+`BindingResult` es una interfaz en Spring que representa los resultados de la validación de un objeto. Se utiliza en los controladores para capturar y manejar errores de validación cuando se procesan formularios o solicitudes que contienen datos del cliente.
+
+**Función de `BindingResult`**
+
+- **Captura de errores de validación**: `BindingResult` almacena los errores de validación que ocurren cuando se intenta vincular los datos del cliente a un objeto de dominio o DTO.
+- **Proporciona detalles de errores**: Permite acceder a detalles específicos de los errores, como qué campos tienen errores y qué mensajes de error están asociados con esos campos.
+- **Facilita el manejo de errores en el controlador**: Permite al controlador manejar errores de validación de manera programática, proporcionando retroalimentación útil al cliente.
+
+**Beneficios de `BindingResult`**
+
+- **Manejo eficiente de errores**: Proporciona una manera clara y estructurada de manejar errores de validación en los controladores.
+- **Detalles de errores**: Permite acceder a mensajes de error específicos y relevantes, lo que facilita la retroalimentación al usuario.
+- **Integración con Spring**: Se integra perfectamente con el sistema de validación de Spring, facilitando la configuración y el uso.
+
+**Aplicando validación en el Controller**
+
+```java
+package com.breakline.survey.app_survey.web.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.breakline.survey.app_survey.domain.service.catalog.ICatalog;
+import com.breakline.survey.app_survey.persistence.entity.Catalog;
+
+import jakarta.validation.Valid;
+
+import java.util.*;
+
+@RestController
+@RequestMapping("/catalogs")
+public class CatalogController {
+
+    @Autowired
+    private ICatalog service;
+
+    @GetMapping
+    public List<Catalog> listCatalog(){
+        return service.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Catalog> view(@PathVariable Long id){
+        Optional<Catalog> catalogOpt = service.findById(id);
+        if(catalogOpt.isPresent()){
+            return ResponseEntity.ok(catalogOpt.orElseThrow());
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    @PostMapping
+    public ResponseEntity<?> create(@Valid @RequestBody Catalog catalog, BindingResult result){
+        if (result.hasFieldErrors()) {
+            return validation(result);
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.save(catalog));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> update(@Valid @RequestBody Catalog catalog,BindingResult result,@PathVariable Long id){
+        if (result.hasFieldErrors()) {
+            return validation(result);
+        }
+        Optional<Catalog> catalogOpt = service.update(id, catalog);
+        if (catalogOpt.isPresent()){
+           return ResponseEntity.status(HttpStatus.CREATED).body(catalogOpt.orElseThrow());  
+        }
+        return ResponseEntity.notFound().build();
+    }
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Catalog> delete(@PathVariable Long id){
+        Catalog catalog = new Catalog();
+        catalog.setId(id);
+        Optional<Catalog> catalogOpt = service.delete(id);
+        if(catalogOpt.isPresent()){
+            return ResponseEntity.ok(catalogOpt.orElseThrow());
+        }
+        return ResponseEntity.notFound().build();
+    }
+    private ResponseEntity<?> validation(BindingResult result) {
+        Map<String, String> errors = new HashMap<>();
+
+        result.getFieldErrors().forEach(err -> {
+            errors.put(err.getField(), "El campo " + err.getField() + " " + err.getDefaultMessage());
+        });
+        return ResponseEntity.badRequest().body(errors);
+    }
+}
+```
+
+## 4.5 MapStruct
+
+**MapStruct** es un **framework de mapeo de objetos en tiempo de compilación** para Java.
+
+> [!NOTE]
+>
+> MapStruct es una herramienta que genera código Java estático y tipado para transformar un objeto de un tipo a otro, utilizando anotaciones declarativas y validación en tiempo de compilación, eliminando la reflexión y reduciendo errores de mapeo en tiempo de ejecución.
+
+### 4.5.1 El problema que resuelve MapStruct
+
+En aplicaciones reales (especialmente con **DDD y arquitectura hexagonal**), es habitual trabajar con múltiples representaciones del mismo concepto:
+
+- Entidades JPA
+- Entidades de dominio
+- DTOs (Request / Response)
+- Proyecciones
+
+Ejemplo del problema clásico
+
+```
+CountryDto dto = new CountryDto();
+dto.setId(entity.getId());
+dto.setName(entity.getName());
+dto.setCode(entity.getCode());
+```
+
+Este código:
+
+- Es **repetitivo**
+- Es **propenso a errores**
+- No falla en compilación si algo cambia
+- Contamina la lógica de negocio
+
+> [!IMPORTANT]
+>
+> MapStruct elimina este problema de raíz.
+
+## 4.5.2 Instalación 
+
+### Maven
+
+```xml
+<dependency>
+    <groupId>org.mapstruct</groupId>
+    <artifactId>mapstruct</artifactId>
+    <version>1.6.3</version>
+    <scope>compile</scope>
+</dependency>
+
+<dependency>
+    <groupId>org.mapstruct</groupId>
+    <artifactId>mapstruct-processor</artifactId>
+    <version>1.6.3</version>
+    <scope>compile</scope>
+</dependency>
+```
+
+------
+
+#### Ejemplo básico (DTO ↔ Entity)
+
+#### Clase origen
+
+```
+public class CountryEntity {
+    private Long id;
+    private String name;
+    private String code;
+}
+```
+
+#### Clase destino
+
+```
+public class CountryDto {
+    private Long id;
+    private String name;
+    private String code;
+}
+```
+
+------
+
+#### Definición del Mapper (concepto clave)
+
+```
+@Mapper(componentModel = "spring")
+public interface CountryMapper {
+
+    CountryDto toDto(CountryEntity entity);
+
+    CountryEntity toEntity(CountryDto dto);
+}
+```
+
+## 4.6 Spring security 6
+
+Spring Security es un módulo del ecosistema de Spring diseñado para proteger aplicaciones web y APIs mediante la implementación de mecanismos robustos de autenticación y autorización. Este módulo se integra estrechamente con el marco de trabajo de Spring, proporcionando una solución integral para gestionar la seguridad de las aplicaciones sin necesidad de abordar detalles complicados.
+
+### 4.6.1 Puntos Clave de Spring Security
+
+1. **Autenticación**: Verifica la identidad del usuario. ¿Quién es?
+2. **Autorización**: Determina los permisos del usuario autenticado. ¿Qué puede hacer?
+3. **Protección de Recursos**: Define qué recursos están protegidos y cuáles son públicos.
+4. **Integración con Diferentes Mecanismos de Autenticación**: Soporte para diversos métodos como autenticación basada en formularios, HTTP Basic, OAuth2, JWT, etc.
+
+### 4.6.2 Componentes Principales
+
+1. **FilterChainProxy**: Componente central que maneja la cadena de filtros de seguridad, coordinando el flujo de trabajo de la seguridad.
+2. **DelegatingFilterProxy**: Actúa como un delegado para un filtro definido en el contexto de la aplicación, integrando los filtros de seguridad de Spring con la configuración de filtros de una aplicación web.
+3. **SecurityFilterChain**: Interfaz que representa una cadena de filtros de seguridad aplicada a las solicitudes HTTP.
+
+### 4.6.3 Tipos de Aplicaciones
+
+- **Stateful (Basada en Sesiones)**: Mantiene un estado en el servidor para cada usuario. Es eficaz para mantener información del usuario, pero puede presentar problemas de escalabilidad y rendimiento con muchos usuarios concurrentes.
+- **Stateless (Basada en Tokens de Autenticación)**: No mantiene estado en el servidor. Cada solicitud del cliente contiene toda la información necesaria para procesar la solicitud. Es altamente escalable y eficiente, pero requiere que los tokens se protejan adecuadamente.
+
+### 4.6.4 Arquitectura
+
+#### 4.6.4.1 FilterChain
+
+`FilterChain` es **una interfaz del API Servlet** (no específica de Spring) que representa la **cadena de filtros** por la que pasa una solicitud HTTP antes de llegar al `Servlet` (por ejemplo, un controlador en Spring MVC)
+
+​						Obtenido : https://docs.spring.io/spring-security/reference/servlet/architecture.html
+
+<img src="https://i.ibb.co/9HFrz6Vc/image.png" style="zoom:67%;" />
+
+##### 4.6.4.1.2 Componentes
+
+1. **Client**:
+   - Representa al cliente que realiza una solicitud HTTP hacia la aplicación web.
+2. **FilterChain**:
+   - Es una estructura que encadena varios filtros que procesan la solicitud HTTP antes de llegar al servlet final.
+   - Los filtros son responsables de diversas tareas relacionadas con la seguridad y otros aspectos de la gestión de la solicitud.
+3. **Filter0, Filter1, Filter2**:
+   - Representan los diferentes filtros en la cadena.
+   - Cada filtro tiene la oportunidad de inspeccionar, modificar, o rechazar la solicitud antes de pasarla al siguiente filtro en la cadena.
+   - Los filtros se aplican en el orden en que están configurados.
+4. **Servlet**:
+   - El componente final que maneja la solicitud HTTP una vez que ha pasado a través de todos los filtros de la cadena.
+   - Aquí es donde se ejecuta la lógica de negocio de la aplicación web.
+
+##### 4.6.4.1.3 Flujo del Proceso
+
+1. **Cliente realiza una solicitud HTTP**:
+   - El cliente envía una solicitud HTTP a la aplicación web.
+2. **La solicitud pasa a través del FilterChain**:
+   - La solicitud entra en el `FilterChain`, donde se aplican una serie de filtros secuencialmente.
+3. **Filtro 0 (Filter0)**:
+   - El primer filtro en la cadena (`Filter0`) procesa la solicitud. Puede autenticar al usuario, realizar registros, o aplicar cualquier lógica específica de seguridad.
+   - Luego, la solicitud se pasa al siguiente filtro (`Filter1`).
+4. **Filtro 1 (Filter1)**:
+   - El segundo filtro (`Filter1`) aplica su propia lógica de procesamiento.
+   - Después de esto, la solicitud se pasa al siguiente filtro (`Filter2`).
+5. **Filtro 2 (Filter2)**:
+   - El tercer filtro (`Filter2`) realiza su procesamiento.
+   - Una vez completado, la solicitud es pasada al servlet.
+6. **Servlet**:
+   - Finalmente, la solicitud llega al `Servlet` donde se maneja la lógica de negocio específica de la aplicación.
+   - El servlet genera una respuesta basada en la solicitud procesada y esta respuesta sigue el camino inverso de regreso al cliente, pasando nuevamente por los filtros si es necesario.
+
+##### 4.6.4.1.4 Aplicación en Spring Security
+
+En el contexto de Spring Security, los filtros dentro del `FilterChain` pueden incluir:
+
+- **Authentication Filters**: Para autenticar las credenciales del usuario.
+- **Authorization Filters**: Para verificar los permisos del usuario y determinar si tiene acceso al recurso solicitado.
+- **Logging Filters**: Para registrar detalles de la solicitud.
+- **CORS Filters**: Para manejar las políticas de intercambio de recursos de origen cruzado.
+
+Estos filtros trabajan juntos para asegurar que solo las solicitudes autorizadas y autenticadas accedan a los recursos protegidos de la aplicación, proporcionando una capa robusta de seguridad.
+
+#### 4.6.4.2 DelegatingFilterProxy
+
+Es una clase de Spring Framework que crea la instancia del delegado de un filtro declarado en el contexto de la aplicación. Se utiliza normalmente en Spring Security para unir la cadena de filtros de seguridad de Spring Security con la configuración del filtro de una aplicación web de Servlet.
+
+> [!TIP]
+>
+> Spring ofrece una implementación de filtro llamada `DelegatingFilterProxy` que permite establecer un puente entre el ciclo de vida del contenedor Servlet y el `ApplicationContext` de Spring. El contenedor Servlet permite registrar instancias de `Filter` utilizando sus propios estándares, pero no reconoce los Beans definidos por Spring. Puedes registrar `DelegatingFilterProxy` a través de los mecanismos estándar del contenedor Servlet, pero delegar todo el trabajo a un Bean de Spring que implementa.
+
+<img src="https://i.ibb.co/hxrBPgGL/image.png" style="zoom:67%;" />
+
+El `DelegatingFilterProxy` es crucial en el contexto de aplicaciones Spring, ya que permite integrar los filtros definidos como beans dentro del contexto de la aplicación Spring con la cadena de filtros de una aplicación web basada en Servlets. Esto proporciona una manera flexible y poderosa de aplicar lógica de seguridad y otras operaciones personalizadas en las solicitudes HTTP.
+
+#### 4.6.4.3 FilterChainProxy
+
+`FilterChainProxy` es uno de los **componentes centrales de Spring Security**. Su función principal es **interceptar todas las solicitudes HTTP** y **delegar la ejecución de la seguridad** a una o más **SecurityFilterChain**, que contienen los filtros de seguridad reales.
+
+<img src="https://i.ibb.co/TMWMDhgQ/image.png" style="zoom:67%;" />
+
+> [!IMPORTANT]
+>
+> El soporte de Servlet de Spring Security se encuentra dentro de `FilterChainProxy`. `FilterChainProxy` es un filtro especial proporcionado por Spring Security que permite delegar en muchas instancias de `Filter` a través de `SecurityFilterChain`. Dado que `FilterChainProxy` es un Bean, generalmente se envuelve en un `DelegatingFilterProxy`.
+
+El componente **SecurityFilterChain** en Spring Security es una pieza clave para la configuración de la seguridad en aplicaciones web basadas en Spring. A continuación se explica en detalle su rol y funcionamiento:
+
+🎯 Función principal
+
+`FilterChainProxy`:
+
+- Se implementa como un **filtro estándar Servlet** (implementa `javax.servlet.Filter`)
+- Es el componente que **Spring Security registra automáticamente** a través de `DelegatingFilterProxy`
+- Internamente mantiene una lista de **`SecurityFilterChain`**, cada una asociada a una condición (por ejemplo, un patrón de URL)
+
+🧱 ¿Qué hace exactamente?
+
+Cuando una petición HTTP llega al servidor:
+
+1. `DelegatingFilterProxy` la intercepta (desde `web.xml` o Spring Boot).
+2. Delegará la ejecución al bean llamado `springSecurityFilterChain`, que es una instancia de `FilterChainProxy`.
+3. `FilterChainProxy` evalúa cuál de las `SecurityFilterChain` aplica para esa solicitud (por URL, método, etc.).
+4. Una vez elegida la cadena adecuada, ejecuta todos los filtros definidos (por ejemplo, `UsernamePasswordAuthenticationFilter`, `JwtAuthenticationFilter`, etc.).
+
+#### 4.6.4.4 SecurityFilterChain
+
+<img src="https://i.ibb.co/zTxxY8r0/image.png" style="zoom:67%;" />
+
+> [!NOTE]
+>
+> Los filtros de seguridad en `SecurityFilterChain` son típicamente Beans, pero se registran con `FilterChainProxy` en lugar de con `DelegatingFilterProxy`. `FilterChainProxy` ofrece varias ventajas en comparación con el registro directo en el contenedor Servlet o con `DelegatingFilterProxy`. En primer lugar, proporciona un punto de partida para todo el soporte de Servlet de Spring Security. Por esta razón, si intentas solucionar problemas con el soporte de Servlet de Spring Security, agregar un punto de depuración en `FilterChainProxy` es un excelente punto de partida.
+>
+> En segundo lugar, dado que `FilterChainProxy` es central en el uso de Spring Security, puede realizar tareas que no se consideran opcionales. Por ejemplo, borra el `SecurityContext` para evitar fugas de memoria. También aplica el `HttpFirewall` de Spring Security para proteger las aplicaciones contra ciertos tipos de ataques.
+>
+> Además, proporciona mayor flexibilidad para determinar cuándo se debe invocar un `SecurityFilterChain`. En un contenedor Servlet, las instancias de `Filter` se invocan basándose únicamente en la URL. Sin embargo, `FilterChainProxy` puede determinar la invocación basándose en cualquier cosa dentro del `HttpServletRequest` utilizando la interfaz `RequestMatcher`. (https://docs.spring.io/spring-security/reference/servlet/architecture.html)
+
+##### 4.6.4.3.1 Componentes
+
+###### 🔐 1. **Cliente (Client)**
+
+- Es quien realiza una petición HTTP (por ejemplo, acceder a una página web o una API protegida).
+
+------
+
+###### 🧱 2. **FilterChain (Cadena de Filtros estándar de Servlet)**
+
+Cuando llega la petición del cliente, esta pasa por una serie de filtros definidos por la aplicación web. Esta cadena puede contener múltiples filtros, incluyendo los de seguridad.
+
+- **Filter₀ y Filter₂**: son filtros genéricos del stack Servlet (por ejemplo, filtros para logging, compresión, CORS, etc.).
+- **🔁 DelegatingFilterProxy**:
+   Aquí es donde **Spring Security** entra en juego. Este filtro actúa como un *puente* entre el mundo Servlet y el contexto de Spring.
+   **¿Qué hace?** Delega la petición a un bean llamado `FilterChainProxy` dentro del contexto de Spring.
+
+------
+
+###### 🧠 3. **FilterChainProxy**
+
+- Este componente **coordina la seguridad de la aplicación**. Es **el núcleo de la infraestructura de filtros de seguridad de Spring Security**.
+- Internamente, este objeto contiene una o más **SecurityFilterChain**.
+
+------
+
+###### 🧰 4. **SecurityFilterChain**
+
+Aquí están definidos los **filtros de seguridad específicos de Spring Security**, que procesan la petición en orden para aplicar la lógica de seguridad. Estos pueden incluir, por ejemplo:
+
+- `SecurityFilter₀`: podría ser `UsernamePasswordAuthenticationFilter` (autenticación con formulario).
+- `SecurityFilterₙ`: podría ser `AuthorizationFilter`, `JwtAuthenticationFilter`, etc.
+
+Cada filtro tiene una función específica, como:
+
+- Verificar si el usuario está autenticado.
+- Extraer un token JWT y validarlo.
+- Revisar los permisos del usuario.
+- Denegar el acceso si no tiene autorización.
+
+------
+
+###### 🏁 5. **Servlet (Controlador o Endpoint)**
+
+- Si todos los filtros permiten el paso (es decir, el usuario está autenticado y autorizado), la petición llega finalmente al Servlet (tu `@RestController`, por ejemplo).
+
+------
+
+###### 📌 ¿Por qué esta arquitectura?
+
+Spring Security está diseñado con filtros porque:
+
+- Se integra profundamente en el flujo de procesamiento HTTP.
+- Puede interceptar y decidir sobre cada petición **antes de que llegue a la lógica de negocio**.
+
+| Componente                | Rol                                                          |
+| ------------------------- | ------------------------------------------------------------ |
+| **DelegatingFilterProxy** | Conecta el mundo Servlet con Spring Security                 |
+| **FilterChainProxy**      | Coordina la seguridad de las peticiones                      |
+| **SecurityFilterChain**   | Lista de filtros de seguridad (autenticación, autorización, etc.) |
+| **Filtros genéricos**     | Otros filtros de la aplicación fuera de Spring Security      |
+| **Servlet**               | Tu endpoint final (controlador REST, JSP, etc.)              |
+
+**SecurityFilterChain** es una interfaz en Spring Security que define una cadena de filtros de seguridad que se aplican a las solicitudes HTTP en una aplicación web. Estos filtros manejan diversas responsabilidades relacionadas con la seguridad, como autenticación, autorización, manejo de sesiones, y protección contra ataques comunes (e.g., CSRF).
+
+<img src="https://i.ibb.co/fPDVDzQ/image.png" style="zoom:67%;" />
+
+> [!NOTE]
+>
+> En el esquema de múltiples `SecurityFilterChain`, `FilterChainProxy` determina cuál `SecurityFilterChain` debe emplearse. Solo se ejecuta la primera `SecurityFilterChain` que coincida. Por ejemplo, si se solicita la URL `/api/messages/`, coincide primero con el patrón `/api/**` de `SecurityFilterChain0`, por lo que únicamente se invoca `SecurityFilterChain0`, aunque también podría coincidir con `SecurityFilterChainn`. Si se solicita la URL `/messages/`, no coincide con el patrón `/api/**` de `SecurityFilterChain0`, por lo que `FilterChainProxy` continúa verificando cada `SecurityFilterChain`. Suponiendo que ninguna otra instancia de `SecurityFilterChain` coincida, se invoca `SecurityFilterChainn`.
+>
+> Cabe destacar que `SecurityFilterChain0` tiene solo tres filtros de seguridad configurados, mientras que `SecurityFilterChainn` tiene cuatro. Es importante mencionar que cada `SecurityFilterChain` puede ser única y configurarse de manera independiente. De hecho, una `SecurityFilterChain` puede no tener filtros de seguridad si la aplicación requiere que Spring Security ignore ciertas solicitudes.
+
+##### 4.6.4.3.2 Funciones Clave de SecurityFilterChain
+
+1. **Definición de Filtros**:
+   - **SecurityFilterChain** permite especificar una serie de filtros que procesarán las solicitudes HTTP. Cada filtro tiene una función específica dentro del proceso de seguridad.
+2. **Coordinación de Filtros**:
+   - Gestiona el orden en el que se aplican los filtros. Esto es crucial, ya que ciertos filtros deben ejecutarse antes que otros para garantizar un correcto flujo de seguridad.
+3. **Aplicación Condicional**:
+   - **SecurityFilterChain** puede configurarse para que se aplique a ciertas rutas o patrones de URL específicos. Esto permite definir reglas de seguridad diferenciadas para distintas partes de la aplicación.
+
+#### 4.6.5 ¿Por qué es importante Spring Security?  
+
+La seguridad es primordial en cualquier API o aplicación web. Spring Security es la fuerte y confiable infraestructura de autenticación y autorización para darnos las herramientas de seguridad suficientes sin ocuparnos de la preparación tediosa.
+
+> [!TIP]
+>
+> **En el contexto de la seguridad web y Spring Security, es crucial entender las diferencias entre las aplicaciones stateless y stateful. Ambas tienen diferentes enfoques y ventajas en términos de gestión de sesiones y autenticación de usuarios.**
+
+<img src="https://i.ibb.co/sdwRDNCw/image.png" style="zoom:67%;" />
+
+| Característica        | Stateful                                    | Stateless                              |
+| --------------------- | ------------------------------------------- | -------------------------------------- |
+| **Mantenimiento**     | Sesiones gestionadas en el servidor         | No se mantiene estado en el servidor   |
+| **Autenticación**     | Basada en sesiones (Session ID)             | Basada en tokens (JWT)                 |
+| **Escalabilidad**     | Puede presentar problemas de escalabilidad  | Altamente escalable                    |
+| **Balanceo de Carga** | Requiere afinidad de sesión                 | No requiere afinidad de sesión         |
+| **Almacenamiento**    | Información almacenada en el servidor       | Información incluida en cada solicitud |
+| **Seguridad**         | Sesiones pueden ser vulnerables a secuestro | Tokens deben protegerse adecuadamente  |
+
+#### 4.6.6 Aplicaciones Stateful
+
+Las aplicaciones stateful son aquellas en las que se mantiene un estado persistente en el servidor durante la interacción del usuario con la aplicación. Esto significa que el servidor guarda información sobre la sesión del usuario, permitiendo que las solicitudes sucesivas sean tratadas en el contexto de esa sesión.
+
+✅ Ventajas:
+
+- **"Implica mantener un estado en el servidor para cada usuario que interactúa con la aplicación."**
+   ➜ Esto significa que, una vez que un usuario inicia sesión, su información (como autenticación y roles) se guarda en el servidor para próximas solicitudes.
+- **"Eficaz para mantener información del usuario en el servidor y administrar su sesión."**
+   ➜ Útil para gestionar el contexto del usuario: carrito de compras, navegación personalizada, historial, etc.
+
+❌ Desventajas:
+
+- **"Requiere el almacenamiento y la gestión de sesiones en el servidor..."**
+   ➜ El servidor debe mantener un registro por usuario, lo que:
+  - Consume memoria.
+  - Dificulta el escalado horizontal (en balanceadores de carga, por ejemplo).
+  - Puede reducir el rendimiento con muchos usuarios simultáneos.
+
+##### 4.6.6.1 Características Principales
+
+1. **Mantenimiento de Sesiones en el Servidor**:
+   - Las aplicaciones stateful mantienen un estado en el servidor para cada usuario. Esto generalmente se logra a través de sesiones HTTP.
+   - La información de la sesión se almacena en el servidor, y cada usuario tiene una sesión única identificada por un identificador de sesión (session ID).
+2. **Gestión de Sesiones**:
+   - El servidor es responsable de gestionar y almacenar la información de la sesión. Esto incluye detalles como la identidad del usuario, permisos, y otros datos necesarios durante la interacción del usuario con la aplicación.
+   - La gestión de sesiones puede incluir el almacenamiento en memoria, bases de datos, o almacenes de sesiones dedicados como Redis.
+3. **Escalabilidad**:
+   - Mantener sesiones en el servidor puede generar problemas de escalabilidad, especialmente cuando se manejan muchos usuarios concurrentes.
+   - Requiere un balanceo de carga que gestione la "afinidad de sesión" o "pegajosa" para asegurar que las solicitudes de un usuario específico siempre se dirijan al mismo servidor.
+
+#### 4.6.7 Aplicaciones  **stateless**
+
+Las aplicaciones stateless, en contraste con las aplicaciones stateful, no mantienen el estado del usuario en el servidor entre las solicitudes. En su lugar, cada solicitud del cliente contiene toda la información necesaria para que el servidor la procese de manera independiente.
+
+##### 4.6.7.1 Características de las Aplicaciones Stateless
+
+1. **Sin Mantenimiento de Sesiones en el Servidor**:
+   - No se guarda el estado de la sesión en el servidor. Cada solicitud se procesa de manera independiente.
+   - Los datos necesarios para la autenticación y la autorización se envían con cada solicitud, típicamente en forma de tokens.
+2. **Uso de Tokens**:
+   - Las aplicaciones stateless utilizan tokens, como JSON Web Tokens (JWT), para transmitir la información de seguridad.
+   - Un token JWT contiene toda la información necesaria (como identidad del usuario y roles) en su propia estructura y es enviado en cada solicitud.
+3. **Escalabilidad**:
+   - Las aplicaciones stateless son altamente escalables porque no dependen del estado de la sesión del servidor.
+   - Los servidores pueden manejar solicitudes de manera independiente, lo que facilita la distribución de la carga y mejora el rendimiento.
+4. **Seguridad**:
+   - Los tokens deben ser protegidos adecuadamente para prevenir accesos no autorizados y manipulaciones.
+   - La autenticidad e integridad de los tokens se asegura mediante firmas criptográficas.
+5. **Balanceo de Carga**:
+   - No requiere afinidad de sesión, ya que cualquier servidor puede procesar cualquier solicitud sin necesidad de mantener información de sesión específica del usuario.
+
+## 4.7 JWT: Json Web Token
+
+JSON Web Token (JWT) es un estándar abierto (RFC 7519) que define una forma compacta y autónoma de transmitir información de manera segura entre dos partes como un objeto JSON. Esta información puede ser verificada y confiable porque está firmada digitalmente. Los JWTs se utilizan comúnmente para la autenticación y autorización en aplicaciones web y APIs.
+
+<img src="https://i.ibb.co/PsKzWR9d/image.png" style="zoom:67%;" />
+
+### 4.7.1 Estructura de un JWT
+
+Un JWT consta de tres partes separadas por puntos (`.`):
+
+1. **Header (Encabezado)**
+2. **Payload (Carga útil)**
+3. **Signature (Firma)**
+
+#### 1. Header (Encabezado)
+
+El encabezado típicamente consta de dos partes: el tipo de token (JWT) y el algoritmo de firma que se está utilizando, como HMAC SHA256 o RSA.
+
+#### 2. Payload (Carga útil)
+
+La carga útil es la parte del token que contiene las declaraciones (claims). Las declaraciones son afirmaciones sobre una entidad (generalmente, el usuario) y datos adicionales. Hay tres tipos de declaraciones:
+
+- **Registered Claims**: Son un conjunto de declaraciones predefinidas no obligatorias pero recomendadas, como `iss` (emisor), `exp` (expiración), `sub` (asunto), `aud` (audiencia).
+- **Public Claims**: Pueden definirse libremente por aquellos que usen JWTs. Pueden incluir información como el nombre del usuario, roles, etc.
+- **Private Claims**: Son declaraciones personalizadas que se crean para compartir información entre partes que acuerdan utilizarla.
+
+```java
+{
+  "sub": "1234567890",
+  "name": "xxxxx xxxx",
+  "admin": true
+}
+```
+
+#### 3. Signature (Firma)
+
+Para crear la firma, se toma el encabezado codificado, el payload codificado, un secreto (en el caso de HMAC) o una clave privada (en el caso de RSA), y el algoritmo especificado en el encabezado, y se firma.
+
+La firma se usa para verificar que el emisor del JWT sea quien dice ser y para asegurar que el mensaje no haya sido cambiado a lo largo del camino.
+
+<img src="https://i.ibb.co/1HKk4G7/image.png" style="zoom:67%;" />
+
+### 4.7.2 Importar dependencias JWT
+
+1. Ingresar a la pagina oficial de JWT
+
+2. Seleccionar la opcion de Librerias.
+
+   <img src="https://i.ibb.co/SXpPh63v/image.png" style="zoom: 50%;" />
+
+3. En el filtro buscar por Java
+
+   <img src="https://i.ibb.co/QFkwZZrJ/image.png" style="zoom: 50%;" />
+
+4. Se recomienda seleccionar la librería con mas popularidad.
+
+   <img src="https://i.ibb.co/1YnkgtJg/image.png" style="zoom:50%;" />
+
+
+
+5. Cuando ingrese al repo navegar hasta la sección de Instalación>Maven
+
+   ```xml
+   <dependency>
+       <groupId>io.jsonwebtoken</groupId>
+       <artifactId>jjwt-api</artifactId>
+       <version>0.13.0</version>
+   </dependency>
+   <dependency>
+       <groupId>io.jsonwebtoken</groupId>
+       <artifactId>jjwt-impl</artifactId>
+       <version>0.13.0</version>
+       <scope>runtime</scope>
+   </dependency>
+   <dependency>
+       <groupId>io.jsonwebtoken</groupId>
+       <artifactId>jjwt-jackson</artifactId> <!-- or jjwt-gson if Gson is preferred -->
+       <version>0.13.0</version>
+       <scope>runtime</scope>
+   </dependency>
+   ```
+
+6. Copiar las dependencias en el pom del proyecto.
+
+## Taller Practico
+
+Guia : https://youtube.com/playlist?list=PL95tPn7-zQLG2qyoUNdt4kyPzNADkTlo8&si=-boriQjfmfopuGHD
+
+1. Descargue proyecto base https://github.com/trainingLeader/app-security-app.git
+
+2. Configure el archivo properties para la conexion con la base de datos.
+
+   ```java
+   spring.datasource.url=jdbc:mysql://localhost:3306/db?createDatabaseIfNotExist=true
+   spring.datasource.username=xxxxxxxx
+   spring.datasource.password=xxxxxxxx
+   spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+   spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
+   spring.jpa.show-sql=true
+   spring.jpa.hibernate.ddl-auto=create-drop
+   ```
+
+3. Cree las entidades User(users) y Role(roles)
+
+   ```java
+   import java.util.ArrayList;
+   import java.util.List;
+   
+   import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+   
+   import jakarta.persistence.Column;
+   import jakarta.persistence.Entity;
+   import jakarta.persistence.GeneratedValue;
+   import jakarta.persistence.GenerationType;
+   import jakarta.persistence.Id;
+   import jakarta.persistence.ManyToMany;
+   import jakarta.persistence.Table;
+   
+   @Entity
+   @Table(name="roles")
+   public class Role {
+       
+       @Id
+       @GeneratedValue(strategy = GenerationType.IDENTITY)
+       private Long id;
+   
+       @Column(unique = true)
+       private String name;
+   
+       @JsonIgnoreProperties({"roles", "handler", "hibernateLazyInitializer"})
+       @ManyToMany(mappedBy = "roles")
+       private List<User> users;
+   
+       public Role() {
+           this.users = new ArrayList<>();
+       }
+   
+       public Long getId() {
+           return id;
+       }
+   
+       public void setId(Long id) {
+           this.id = id;
+       }
+   
+       public String getName() {
+           return name;
+       }
+   
+       public void setName(String name) {
+           this.name = name;
+       }
+   
+       public List<User> getUsers() {
+           return users;
+       }
+   
+       public void setUsers(List<User> users) {
+           this.users = users;
+       }
+   }
+   
+   ```
+
+   ```java
+   import java.util.ArrayList;
+   import java.util.List;
+   
+   import com.fasterxml.jackson.annotation.JsonProperty;
+   
+   import jakarta.persistence.Entity;
+   import jakarta.persistence.GeneratedValue;
+   import jakarta.persistence.GenerationType;
+   import jakarta.persistence.Id;
+   import jakarta.persistence.JoinColumn;
+   import jakarta.persistence.JoinTable;
+   import jakarta.persistence.ManyToMany;
+   import jakarta.persistence.PrePersist;
+   import jakarta.persistence.Table;
+   import jakarta.persistence.Transient;
+   import jakarta.persistence.UniqueConstraint;
+   
+   @Entity
+   @Table(name = "users")
+   public class User {
+   
+       @Id
+       @GeneratedValue(strategy = GenerationType.IDENTITY)
+       private Long id;
+   
+       private String username;
+   
+       private String password;
+   
+       @ManyToMany
+       @JoinTable(
+           name = "users_roles",
+           joinColumns = @JoinColumn(name="user_id"),
+           inverseJoinColumns = @JoinColumn(name="role_id"),
+           uniqueConstraints = { @UniqueConstraint(columnNames = {"user_id", "role_id"})}
+       )
+       private List<Role> roles;
+   
+       
+       public User() {
+           roles = new ArrayList<>();
+       }
+   
+       public Long getId() {
+           return id;
+       }
+   
+       public void setId(Long id) {
+           this.id = id;
+       }
+   
+       public String getUsername() {
+           return username;
+       }
+   
+       public void setUsername(String username) {
+           this.username = username;
+       }
+   
+       public String getPassword() {
+           return password;
+       }
+   
+       public void setPassword(String password) {
+           this.password = password;
+       }
+   
+       public List<Role> getRoles() {
+           return roles;
+       }
+   
+       public void setRoles(List<Role> roles) {
+           this.roles = roles;
+       }
+   
+   }
+   
+   ```
+
+4. Cree los repositories para user y role de tipo **CrudRepository**
+
+   ```java
+   import java.util.Optional;
+   import org.springframework.data.repository.CrudRepository;
+   
+   import com.uissurvey.uissurvey_app.domain.entities.Role;
+   
+   public interface RoleRepository extends CrudRepository<Role,Long> {
+       Optional<Role> findByName(String name);
+   }
+   
+   //-------------------------------------------------------------------------
+   import java.util.Optional;
+   import org.springframework.data.repository.CrudRepository;
+   import org.springframework.stereotype.Repository;
+   
+   import com.uissurvey.uissurvey_app.domain.entities.User;
+   
+   @Repository
+   public interface UserRepository extends CrudRepository<User,Long> {
+       boolean existsByUsername(String username);
+       Optional<User> findByUsername(String username);
+   }
+   ```
+
+   
+
+5. Cree los servicios para user e implemente el servicio
+
+   ```java
+   import java.util.List;
+   
+   import com.crudsec.app_security_app.domain.entity.User;
+   
+   public interface IUserService {
+       List<User> findAll();
+       User save(User user);
+   }
+   ```
+
+6. Agregue el siguiente atributo a la clase User
+
+   ```java
+   @Transient
+   @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+   private boolean admin;
+   
+   ---------------- Y -----------------
+   public boolean isAdmin() {
+           return admin;
+   }
+   
+   public void setAdmin(boolean admin) {
+           this.admin = admin;
+   }
+   ```
+
+7. Cree un método personalizado en el Repositorio de RoleRepository para buscar el rol por nombre.
+
+   ```java
+   Optional<Role> findByName(String name);
+   ```
+
+8. Cree el archivo message.properties
+
+   ```
+   NotEmpty.product.name=es requerido!
+   NotBlank.product.description=es requerido, por favor
+   NotNull.product.price=no puede ser nulo, ok!
+   Min.product.price=debe ser un valor numerico mayor o igual que 500!
+   IsRequired.product.name=es requerido usando anotaciones, mensaje en properties!
+   ```
+
+9. Cree el archivo de configuración para la aplicacion y para security
+
+   ```
+   import org.springframework.context.annotation.Configuration;
+   import org.springframework.context.annotation.PropertySource;
+   
+   @Configuration
+   @PropertySource("classpath:messages.properties")
+   public class AppConfig {
+       
+   }
+   ```
+
+10. Agregue la dependencia de Spring Security
+
+    ```java
+    <dependency>
+    	<groupId>org.springframework.boot</groupId>
+    	<artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    ```
+
+    > ​    <dependency>
+    >
+    > ​      <groupId>org.springframework.boot</groupId>
+    >
+    > ​      <artifactId>spring-boot-starter-security</artifactId>
+    >
+    > ​    </dependency>
+
+11. Cree la clase SpringSecurityConfig. Esta clase se coloca en un paquete llamado security
+
+    ```java
+    import org.springframework.context.annotation.Bean;
+    import org.springframework.context.annotation.Configuration;
+    import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+    import org.springframework.security.crypto.password.PasswordEncoder;
+    
+    @Configuration
+    public class SpringSecurityConfig {
+    
+        @Bean
+        PasswordEncoder passwordEncoder() {
+            return new BCryptPasswordEncoder();
+        }
+    }
+    ```
+
+    **@Bean**:
+
+    - La anotación `@Bean` indica que el método produce un bean que debe ser administrado por el contenedor de Spring. Los beans en Spring son objetos que son instanciados, ensamblados y administrados por Spring IoC Container.
+    - Cuando el contenedor de Spring encuentra este método anotado, llamará al método y registrará el valor devuelto como un bean dentro del contexto de la aplicación de Spring.
+
+    **PasswordEncoder**:
+
+    - `PasswordEncoder` es una interfaz de Spring Security que define métodos para codificar contraseñas y verificar contraseñas codificadas.
+    - Es una interfaz fundamental para la seguridad, ya que permite manejar las contraseñas de manera segura, utilizando técnicas de hashing en lugar de almacenarlas en texto plano.
+
+    **BCryptPasswordEncoder**:
+
+    - `BCryptPasswordEncoder` es una implementación de `PasswordEncoder` que utiliza el algoritmo BCrypt para el hashing de contraseñas. BCrypt es un algoritmo de hashing que incluye un factor de costo ajustable, lo que significa que la cantidad de tiempo que toma codificar una contraseña puede incrementarse a medida que el hardware mejora, haciendo que el hash sea más seguro frente a ataques de fuerza bruta.
+    - Al devolver una instancia de `BCryptPasswordEncoder`, se asegura que las contraseñas en la aplicación se codifiquen utilizando BCrypt.
+
+    > ### ¿Por qué es importante?
+    >
+    > El uso de un `PasswordEncoder` como `BCryptPasswordEncoder` es crucial para proteger las contraseñas de los usuarios. Cuando una contraseña es codificada con BCrypt, se convierte en un hash seguro que es difícil de revertir. Esto significa que incluso si un atacante obtiene acceso a la base de datos, no podría obtener fácilmente las contraseñas originales.
+
+12. En la implementación del servicio inyecte RoleRepository y PasswordEncoder
+
+    ```java
+    @Autowired
+    private RoleRepository roleRepository;
+    
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+    ```
+
+13. Agregue los roles ROLE_USER Y ROLE_ADMIN en la tabla roles de la base de datos.
+
+14. Modifique el metodo save de la implementacion del servicio.
+
+    ```java
+    @Override
+    @Transactional
+    public User save(User user) {
+            Optional<Role> optionalRoleUser = roleRepository.findByName("ROLE_USER");
+            List<Role> roles = new ArrayList<>();
+    
+            optionalRoleUser.ifPresent(roles::add);
+    
+            if (user.isAdmin()) {
+                Optional<Role> optionalRoleAdmin = roleRepository.findByName("ROLE_ADMIN");
+                optionalRoleAdmin.ifPresent(roles::add);
+            }
+    
+            user.setRoles(roles);
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+            return repository.save(user);
+    }
+    ```
+
+15. Agregue el UserController
+
+    ```java
+    import org.springframework.beans.factory.annotation.Autowired;
+    import org.springframework.http.HttpStatus;
+    import org.springframework.http.ResponseEntity;
+    import org.springframework.validation.BindingResult;
+    import org.springframework.web.bind.annotation.GetMapping;
+    import org.springframework.web.bind.annotation.PostMapping;
+    import org.springframework.web.bind.annotation.RequestBody;
+    import org.springframework.web.bind.annotation.RequestMapping;
+    import org.springframework.web.bind.annotation.RestController;
+    import java.util.*;
+    import com.crudsec.app_security_app.application.services.IUserService;
+    import com.crudsec.app_security_app.domain.entity.User;
+    
+    import jakarta.validation.Valid;
+    
+    @RestController
+    @RequestMapping("/users")
+    public class UserController {
+        @Autowired
+        private IUserService service;
+    
+        @GetMapping
+        public List<User> list() {
+            return service.findAll();
+        }
+        
+        @PostMapping
+        public ResponseEntity<?> create(@Valid @RequestBody User user, BindingResult result) {
+            if (result.hasFieldErrors()) {
+                return validation(result);
+            }
+            return ResponseEntity.status(HttpStatus.CREATED).body(service.save(user));
+        }
+        
+        private ResponseEntity<?> validation(BindingResult result) {
+            Map<String, String> errors = new HashMap<>();
+    
+            result.getFieldErrors().forEach(err -> {
+                errors.put(err.getField(), "El campo " + err.getField() + " " + err.getDefaultMessage());
+            });
+            return ResponseEntity.badRequest().body(errors);
+        }
+    }
+    ```
+
+    **@RestController**:
+
+    - Esta anotación indica que la clase `UserController` es un controlador de Spring que gestiona solicitudes HTTP. Combina las anotaciones `@Controller` y `@ResponseBody`, lo que significa que los métodos de la clase devolverán directamente los datos (en formato JSON, XML, etc.) en lugar de una vista.
+
+    **@RequestMapping("/users")**:
+
+    - Define la ruta base para este controlador. Todas las rutas de los métodos de esta clase comenzarán con `/users`. Por ejemplo, `/users` para listar todos los usuarios.
+
+    **IUserService**:
+
+    - `IUserService` es una interfaz de servicio que contiene la lógica de negocio relacionada con los usuarios. Esta interfaz se inyecta en el controlador usando la anotación `@Autowired`, lo que indica a Spring que debe proporcionar una instancia del servicio automáticamente.
+
+    **@GetMapping**:
+
+    - Asocia este método con solicitudes HTTP GET. Cuando un cliente realiza una solicitud GET a `/users`, se invocará este método.
+
+    **list()**:
+
+    - Este método llama al servicio para obtener una lista de todos los usuarios (`service.findAll()`) y la devuelve. El resultado se convierte automáticamente en JSON debido a `@RestController`.
+
+    **@PostMapping**:
+
+    - Este método está asociado con solicitudes HTTP POST. Se utilizará cuando un cliente envíe datos para crear un nuevo usuario a la ruta `/users`.
+
+    **@Valid @RequestBody User user**:
+
+    - `@RequestBody` indica que el cuerpo de la solicitud HTTP debe ser convertido en un objeto `User`.
+    - `@Valid` activa la validación automática del objeto `User` basado en las anotaciones de validación que pueda tener, como `@NotNull`, `@Size`, etc.
+
+    **BindingResult result**:
+
+    - Este parámetro captura los resultados de la validación. Si hay errores en los datos enviados, se guardan en `result`.
+
+    **if (result.hasFieldErrors())**:
+
+    - Este bloque verifica si hubo errores de validación. Si los hay, llama al método `validation(result)` para manejar los errores.
+
+    **service.save(user)**:
+
+    - Si no hay errores, se llama al método `save` del servicio para guardar el nuevo usuario en la base de datos. Luego, se devuelve una respuesta HTTP con el estado `201 Created` y el objeto usuario recién creado.
+
+    **validation(BindingResult result)**:
+
+    - Este método privado se encarga de manejar los errores de validación. Crea un `Map` de errores donde la clave es el nombre del campo y el valor es un mensaje de error personalizado.
+
+    **result.getFieldErrors()**:
+
+    - Obtiene una lista de errores de campo que se produjo durante la validación.
+
+    **forEach(err -> { ... })**:
+
+    - Recorre todos los errores de campo y los agrega al mapa de errores con un mensaje descriptivo.
+
+    **ResponseEntity.badRequest().body(errors)**:
+
+    - Devuelve una respuesta HTTP con el estado `400 Bad Request` y el cuerpo de la respuesta contiene el mapa de errores.
+
+## Configuración reglas de seguridad
+
+En la clase SpringSecurity agregue el siguiente metodo
+
+```java
+@Bean
+SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        return http.authorizeHttpRequests((authz) -> authz
+                .requestMatchers("/users").permitAll()
+                .anyRequest().authenticated())
+                .csrf(config -> config.disable())
+                .sessionManagement(management -> management.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .build();
+}
+```
+
+A la clase User agreguele el atributo private boolean enabled;
+
+Cree una nueva interface llamada **ExistsByUsername** y la clase de implementacion **ExistsByUsernameValidation**  para validar la existencia del usuario.
+
+```java
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+import jakarta.validation.Payload;
+
+@Target(ElementType.FIELD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ExistsByUsername {
+    String message() default "ya existe en la base de datos!, escoja otro username!";
+
+    Class<?>[] groups() default {};
+
+    Class<? extends Payload>[] payload() default {};
+}
+//--------------------------------------------------------------
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+import com.crudsec.app_security_app.application.services.IUserService;
+
+@Component
+public class ExistsByUsernameValidation implements ConstraintValidator<ExistsByUsername, String> {
+
+    @Autowired
+    private IUserService service;
+
+    @Override
+    public boolean isValid(String username, ConstraintValidatorContext context) {
+        if (service == null) {
+            return true;
+        }
+        return !service.existsByUsername(username);
+    }
+}
+```
+
+Modifique el Service, CrudRepository y Repository de User
+
+```java
+import java.util.List;
+
+import com.crudsec.app_security_app.domain.entity.User;
+
+public interface IUserService {
+    List<User> findAll();
+    User save(User user);
+    boolean existsByUsername(String username); //<-- Add this code
+}
+//------------------------------------------------------------------
+import java.util.Optional;
+import org.springframework.data.repository.CrudRepository;
+
+import com.crudsec.app_security_app.domain.entity.User;
+
+public interface UserRepository extends CrudRepository<User,Long> {
+    boolean existsByUsername(String username); //<-- Add this code
+
+    Optional<User> findByUsername(String username); //<-- Add this code
+}
+// -----------------------------------------------------------------
+import java.util.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.crudsec.app_security_app.application.services.IUserService;
+import com.crudsec.app_security_app.domain.entity.Role;
+import com.crudsec.app_security_app.domain.entity.User;
+import com.crudsec.app_security_app.infrastructure.repositories.RoleRepository;
+
+@Service
+public class UserAdapter implements IUserService {
+    @Autowired
+    private UserRepository repository;
+
+    @Autowired
+    private RoleRepository roleRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<User> findAll() {
+        return (List<User>) repository.findAll();
+    }
+
+    @Override
+    @Transactional
+    public User save(User user) {
+        Optional<Role> optionalRoleUser = roleRepository.findByName("ROLE_USER");
+        List<Role> roles = new ArrayList<>();
+
+        optionalRoleUser.ifPresent(roles::add);
+
+        if (user.isAdmin()) {
+            Optional<Role> optionalRoleAdmin = roleRepository.findByName("ROLE_ADMIN");
+            optionalRoleAdmin.ifPresent(roles::add);
+        }
+
+        user.setRoles(roles);
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        return repository.save(user);
+    }
+    @Override
+    public boolean existsByUsername(String username) {
+        return repository.existsByUsername(username);   //<-- Add this method
+    }
+
+}
+```
+
+Implemente el UserDetailsService
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import com.crudsec.app_security_app.domain.entity.User;
+import com.crudsec.app_security_app.infrastructure.repositories.user.UserRepository;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class JpaUserDetailsService implements UserDetailsService{
+
+     @Autowired
+    private UserRepository repository;
+
+    @Transactional(readOnly = true)
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+
+        Optional<User> userOptional = repository.findByUsername(username);
+
+        if (userOptional.isEmpty()) {
+            throw new UsernameNotFoundException(String.format("Username %s no existe en el sistema!", username));
+        }
+
+        User user = userOptional.orElseThrow();
+
+        List<GrantedAuthority> authorities = user.getRoles().stream()
+                .map(role -> new SimpleGrantedAuthority(role.getName()))
+                .collect(Collectors.toList());
+
+        return new org.springframework.security.core.userdetails.User(user.getUsername(), 
+        user.getPassword(), 
+        user.isEnabled(),
+    	true, // la cuenta no ha expirado
+    	true, // las credenciales no han expirado
+    	true, // la cuenta no está bloqueada
+    	authorities); // los roles del usuario      
+    }
+}
+```
+
+### Anotaciones y Clases:
+
+- `@Service`: Marca la clase como un *Spring Service* que puede ser inyectado y gestionado por el *Spring container*.
+- `UserDetailsService`: Es una interfaz de Spring Security que se usa para cargar detalles específicos de un usuario con base en su nombre de usuario, especialmente durante la autenticación.
+
+### Dependencias:
+
+- `@Autowired UserRepository repository`: Inyecta una instancia de `UserRepository`, que es la interfaz que permite interactuar con la base de datos de usuarios.
+
+### Método `loadUserByUsername`:
+
+Este método es crucial para la autenticación. Spring Security lo usa para cargar el usuario por su nombre de usuario y devolver un objeto `UserDetails`, que contiene la información necesaria para la autenticación y autorización.
+
+1. **Entrada**:
+
+   - Recibe el nombre de usuario (`username`) y lanza una excepción `UsernameNotFoundException` si no lo encuentra.
+
+2. **Búsqueda del usuario**:
+
+   - `repository.findByUsername(username)`: Llama al repositorio para buscar un usuario por su nombre. El repositorio devuelve un `Optional<User>`.
+
+3. **Validación**:
+
+   - Si el `Optional` está vacío, se lanza `UsernameNotFoundException` con un mensaje de error personalizado.
+   - En caso de que no esté vacío, se obtiene el usuario de `Optional` con `orElseThrow()`.
+
+4. **Asignación de roles (Authorities)**:
+
+   - Se convierten los roles del usuario en instancias de `GrantedAuthority`, una interfaz de Spring Security que define permisos.
+   - Cada rol del usuario (`user.getRoles()`) se transforma en una instancia de `SimpleGrantedAuthority`, usando el nombre del rol como argumento.
+
+5. **Creación del objeto `UserDetails`**:
+
+   - Se retorna una instancia de 
+
+     ```
+     User
+     ```
+
+      de Spring Security (
+
+     ```
+     org.springframework.security.core.userdetails.User
+     ```
+
+     ), que contiene:
+
+     - El nombre de usuario (`user.getUsername()`).
+     - La contraseña (`user.getPassword()`).
+     - Tres atributos booleanos (`user.isEnabled()`, `true`, `true`, `true`) que representan si el usuario está activo, si la cuenta no está expirada, y si las credenciales no han expirado.
+     - La lista de `authorities`, que son los roles asociados.
+
+> return new org.springframework.security.core.userdetails.User(
+>  user.getUsername(), 
+>  user.getPassword(), 
+>  user.isEnabled(), // true si el usuario está habilitado
+>  true, // la cuenta no ha expirado
+>  true, // las credenciales no han expirado
+>  true, // la cuenta no está bloqueada
+>  authorities // los roles del usuario
+> );
+
+
+
+Añadiendo JwtAuthenticationFilter. Cree un nuevo paquete llamado filter; este paquete debe ser creado en security.
+
+```java
+import java.io.IOException;
+
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import com.fasterxml.jackson.core.exc.StreamReadException;
+import com.fasterxml.jackson.databind.DatabindException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uissurvey.uissurvey_app.domain.entities.User;
+
+import org.springframework.security.core.Authentication;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+import org.springframework.security.core.AuthenticationException;
+
+public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilter{
+   private AuthenticationManager authenticationManager;
+
+    public JwtAuthenticationFilter(AuthenticationManager authenticationManager) {
+        this.authenticationManager = authenticationManager;
+    }
+
+    @Override
+    public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response)
+            throws AuthenticationException {
+
+        User user = null;
+        String username = null;
+        String password = null;
+
+        try {
+            user = new ObjectMapper().readValue(request.getInputStream(), User.class);
+            username = user.getUsername();
+            password = user.getPassword();
+        } catch (StreamReadException e) {
+            e.printStackTrace();
+        } catch (DatabindException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(username,
+                password);
+
+        return authenticationManager.authenticate(authenticationToken);
+    }
+}
+
+```
+
+### **Clase `JwtAuthenticationFilter`**:
+
+Esta clase extiende `UsernamePasswordAuthenticationFilter` para manejar la autenticación de usuarios en la aplicación. Se utiliza para interceptar y procesar solicitudes de autenticación, normalmente al inicio de sesión.
+
+### **Dependencias y Objetos:**
+
+- **`AuthenticationManager`**: Se utiliza para gestionar el proceso de autenticación. Recibe un *token* de autenticación con las credenciales (nombre de usuario y contraseña) y devuelve un objeto de autenticación si las credenciales son válidas.
+- **`ObjectMapper`**: De la librería *Jackson*, es usado para leer y convertir los datos de entrada de la solicitud (en formato JSON) a un objeto de la clase `User`.
+
+### Constructor
+
+El constructor recibe el `AuthenticationManager` para autenticar al usuario. Esto permite inyectar el *manager* desde la configuración de seguridad.
+
+### **Método `attemptAuthentication`**:
+
+Este método es el corazón del filtro. Se ejecuta cuando el usuario intenta autenticarse (por ejemplo, al enviar un formulario de inicio de sesión). Aquí, se extraen las credenciales (nombre de usuario y contraseña) de la solicitud HTTP y se intenta autenticar al usuario.
+
+- **Entrada**:
+  - `HttpServletRequest request`: Representa la solicitud HTTP que contiene los datos de autenticación.
+  - `HttpServletResponse response`: Representa la respuesta HTTP, aunque aquí no se usa directamente.
+  - Este método lanza una `AuthenticationException` si ocurre algún problema durante la autenticación.
+
+- **Cuerpo del método**:
+
+1. **Leer los datos del usuario**:
+
+   ```java
+   user = new ObjectMapper().readValue(request.getInputStream(), User.class);
+   ```
+
+   Utiliza `ObjectMapper` para leer el *input stream* de la solicitud (que se espera esté en formato JSON) y lo convierte en un objeto `User`. Este JSON debe incluir el nombre de usuario y la contraseña.
+
+2. **Obtener el nombre de usuario y la contraseña**:
+
+   ```java
+   username = user.getUsername();
+   password = user.getPassword();
+   ```
+
+   Una vez que el `User` ha sido deserializado, extrae el nombre de usuario y la contraseña.
+
+3. **Manejo de excepciones**: Se incluyen varios bloques `catch` para manejar las posibles excepciones que pueden surgir al leer el JSON:
+
+   - `StreamReadException`: Error al leer el flujo de datos.
+   - `DatabindException`: Error al enlazar los datos al objeto `User`.
+   - `IOException`: Cualquier error general de entrada/salida.
+
+4. **Crear el token de autenticación**:
+
+   ```java
+   UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(username, password);
+   ```
+
+   Se crea un objeto `UsernamePasswordAuthenticationToken` usando el nombre de usuario y la contraseña. Este token se utiliza para realizar la autenticación real.
+
+5. **Autenticación**:
+
+   ```java
+   return authenticationManager.authenticate(authenticationToken);
+   ```
+
+   Finalmente, el `authenticationManager` procesa el token de autenticación para verificar si las credenciales son correctas. Si lo son, devuelve un objeto `Authentication` que representa al usuario autenticado.
+
+   
